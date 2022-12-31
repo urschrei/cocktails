@@ -1,16 +1,48 @@
 use rand::seq::IteratorRandom;
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
+
+type Ingredient = String;
+#[derive(Debug, Clone)]
+pub struct IngredientSet(HashSet<Ingredient>);
+
+impl PartialEq for IngredientSet {
+    fn eq(&self, other: &IngredientSet) -> bool {
+        self.0.is_subset(&other.0) && other.0.is_subset(&self.0)
+    }
+}
+
+impl Eq for IngredientSet {}
+
+impl IngredientSet {
+    fn new() -> Self {
+        IngredientSet(HashSet::new())
+    }
+}
+
+impl Hash for IngredientSet {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        let mut a: Vec<&Ingredient> = self.0.iter().collect();
+        a.sort();
+        for s in a.iter() {
+            s.hash(state);
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct BranchBound {
     pub calls: i32,
     pub max_size: usize,
     pub highest_score: usize,
-    pub highest: HashSet<HashSet<String>>,
+    pub highest: HashSet<IngredientSet>,
 }
 
 impl BranchBound {
-    fn new(max_calls: i32, max_size: usize) -> BranchBound {
+    pub fn new(max_calls: i32, max_size: usize) -> BranchBound {
         BranchBound {
             calls: max_calls,
             max_size,
@@ -19,15 +51,15 @@ impl BranchBound {
         }
     }
 
-    fn search(
-        mut self,
-        candidates: &mut HashSet<HashSet<String>>,
-        partial: &mut HashSet<HashSet<String>>,
-    ) -> HashSet<HashSet<String>> {
+    pub fn search(
+        &mut self,
+        candidates: &mut HashSet<IngredientSet>,
+        partial: &mut HashSet<IngredientSet>,
+    ) -> HashSet<IngredientSet> {
         let mut rng = rand::thread_rng();
         if self.calls <= 0 {
             println!("{:?}", "Early return!");
-            return self.highest;
+            return self.highest.clone();
         }
         self.calls -= 1;
         let score = partial.iter().len();
@@ -35,22 +67,55 @@ impl BranchBound {
             self.highest = partial.clone();
             self.highest_score = score;
         }
-        let mut partial_ingredients = HashSet::new();
-        partial_ingredients.extend(partial.iter().collect());
-        candidates
-            .into_iter()
-            .filter(|cocktail| (cocktail | &partial_ingredients).len() <= self.max_size)
-            .collect();
-        let possible_increment = candidates.iter().len();
 
-        let candidate_ingredients = HashSet::new();
-        partial_ingredients.extend(candidates.iter().collect());
-        let excess_ingredients =
-            (&candidate_ingredients | &partial_ingredients).len() - self.max_size;
+        // what cocktails could be added without blowing our ingredient budget?
+        let partial_ingredients_ = partial
+            .iter()
+            .cloned()
+            .flat_map(|ing| ing.0)
+            .collect::<HashSet<Ingredient>>();
+        let mut partial_ingredients = IngredientSet::new();
+        partial_ingredients.0 = partial_ingredients_;
+
+        // if adding all the associated ingredients of the candidates
+        // takes us over the ingredient budget, then not all the
+        // candidates can feasibly be added to our partial
+        // solution. So, if there will be excess ingredients we'll
+        // reduce the upper bound of how many cocktails we might be
+        // able to cover (possible_increment)
+
+        // temporary
+        let new_candidates: HashSet<IngredientSet> = candidates
+            .iter()
+            .cloned()
+            .filter(|cocktail| (&cocktail.0 | &partial_ingredients.0).len() <= self.max_size)
+            .collect();
+        // clear original, and fill with filtered
+        candidates.drain();
+        candidates.extend(new_candidates.iter().cloned());
+        let mut possible_increment = candidates.iter().len();
+        let candidates_ = candidates
+            .iter()
+            .cloned()
+            .flat_map(|ing| ing.0)
+            .collect::<HashSet<Ingredient>>();
+        let mut candidate_ingredients = IngredientSet::new();
+        candidate_ingredients.0 = candidates_;
+        let mut excess_ingredients =
+            (&candidate_ingredients.0 | &partial_ingredients.0).len() - self.max_size;
+
+        // best case is that excess ingredients are concentrated in
+        // some cocktails. if we are in this best case, then if we
+        // remove the cocktails that add the most new ingredients
+        // we'll be back under the ingredient budget
+        //
+        // note that we are just updating the bound; it could actually
+        // be that we want to add one of these cocktails that add
+        // a lot of ingredients
         if excess_ingredients > 0 {
             let mut ingredient_increases = candidates
                 .iter()
-                .map(|cocktail| (cocktail - &partial_ingredients).iter().len())
+                .map(|cocktail| (&cocktail.0 - &partial_ingredients.0).iter().len())
                 .collect::<Vec<usize>>();
             ingredient_increases.sort_by(|a, b| b.cmp(a));
             for increase in ingredient_increases {
@@ -63,28 +128,27 @@ impl BranchBound {
         }
         let threshold = self.highest_score - score;
         if !candidates.is_empty() && possible_increment > threshold {
-            let best = candidates.iter().choose(&mut rng).unwrap();
-            let new_partial_ingredients = &partial_ingredients | best;
-            let mut foo = HashSet::from_iter(
-                candidates
-                    .into_iter()
-                    .filter(|cocktail| cocktail.is_subset(&new_partial_ingredients)),
-            );
-            let covered_candidates = candidates
-                .into_iter()
-                .filter(|cocktail| cocktail.is_subset(&new_partial_ingredients))
+            let best = candidates.iter().cloned().choose(&mut rng).unwrap();
+            let new_partial_ingredients = &partial_ingredients.0 | &best.0;
+            let covered_candidates: HashSet<IngredientSet> = candidates
+                .iter()
+                .cloned()
+                .filter(|cocktail| cocktail.0.is_subset(&new_partial_ingredients))
                 .collect();
             self.search(
-                *candidates - &*covered_candidates,
-                partial | covered_candidates,
+                &mut (&*candidates - &covered_candidates),
+                &mut (&*partial | &covered_candidates),
             );
-            let mut remaining = candidates
+            // if a cocktail is not part of the optimum set than then
+            // the optimum set cannot have the cocktail as a subset
+            let mut remaining: HashSet<IngredientSet> = candidates
                 .iter()
-                .filter(|cocktail| !best.is_subset(&(*cocktail | &partial_ingredients)))
+                .cloned()
+                .filter(|cocktail| !best.0.is_subset(&(&cocktail.0 | &partial_ingredients.0)))
                 .collect();
-            self.search(remaining, partial);
+            self.search(&mut remaining, partial);
         }
-        return self.highest;
+        return self.highest.clone();
     }
 }
 
