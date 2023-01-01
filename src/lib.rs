@@ -73,7 +73,7 @@ impl BranchBound {
         let partial_ingredients_ = partial
             .iter()
             .cloned()
-            .flat_map(|ing| ing.0)
+            .flat_map(|ingredient| ingredient.0)
             .collect::<HashSet<Ingredient>>();
         let mut partial_ingredients = IngredientSet::new();
         partial_ingredients.0 = partial_ingredients_;
@@ -84,24 +84,16 @@ impl BranchBound {
         // solution. So, if there will be excess ingredients we'll
         // reduce the upper bound of how many cocktails we might be
         // able to cover (possible_increment)
+        candidates.retain(|cocktail| (&cocktail.0 | &partial_ingredients.0).len() <= self.max_size);
 
-        // temporary
-        let new_candidates: HashSet<IngredientSet> = candidates
-            .iter()
-            .cloned()
-            .filter(|cocktail| (&cocktail.0 | &partial_ingredients.0).len() <= self.max_size)
-            .collect();
-        // clear original, and fill with filtered
-        candidates.drain();
-        candidates.extend(new_candidates.iter().cloned());
         let mut possible_increment = candidates.iter().len();
-        let candidates_ = candidates
+        let candidate_ingredients_ = candidates
             .iter()
             .cloned()
             .flat_map(|ing| ing.0)
             .collect::<HashSet<Ingredient>>();
         let mut candidate_ingredients = IngredientSet::new();
-        candidate_ingredients.0 = candidates_;
+        candidate_ingredients.0 = candidate_ingredients_;
         let mut excess_ingredients =
             (&candidate_ingredients.0 | &partial_ingredients.0).len() as i32 - self.max_size as i32;
 
