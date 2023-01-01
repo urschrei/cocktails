@@ -1,8 +1,9 @@
+use csv::ReaderBuilder;
 use rand::seq::IteratorRandom;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::hash::{Hash, Hasher};
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 
 type Ingredient = String;
 #[derive(Debug, Clone)]
@@ -111,13 +112,13 @@ impl BranchBound {
         if excess_ingredients > 0 {
             let mut ingredient_increases = candidates
                 .iter()
-                .map(|cocktail| (&cocktail.0 - &partial_ingredients.0).iter().len() as i32)
+                .map(|cocktail| (&cocktail.0 - &partial_ingredients.0).len() as i32)
                 .collect::<Vec<i32>>();
             ingredient_increases.sort_by(|a, b| b.cmp(a));
             for increase in ingredient_increases {
                 possible_increment -= 1;
                 excess_ingredients -= increase;
-                if excess_ingredients == 0 {
+                if excess_ingredients <= 0 {
                     break;
                 }
             }
@@ -165,18 +166,30 @@ mod tests {
 
         let f = File::open("cocktails.csv").unwrap();
         let reader = BufReader::new(f);
-        for line in reader.lines() {
-            let s = line.unwrap().to_string();
+        let csvr = ReaderBuilder::new()
+            .flexible(true)
+            .has_headers(false)
+            .from_reader(reader);
+        let records = csvr.into_records();
+        // populate map
+        records.for_each(|record| {
+            let r = record.unwrap();
+            let hs = r
+                .iter()
+                .skip(1)
+                .map(|s| s.to_owned())
+                .collect::<HashSet<String>>();
+            let value = r.iter().nth(0).unwrap().to_owned();
             let mut key = IngredientSet::new();
-            let mut row = s.split(",").map(|s| s.to_string()).collect::<Vec<String>>();
-            let value = row.remove(0);
-            let hs = HashSet::from_iter(row);
             key.0 = hs;
+            // println!("key {:?}", &key);
+            // println!("value {:?}", &value);
             map.insert(key, value);
-        }
+        });
         let mut cocktails = map.keys().cloned().collect();
+        // println!("c {:?}", &cocktails);
         let mut bar: HashSet<IngredientSet> = HashSet::new();
-        let mut bb = BranchBound::new(8000000, 16);
+        let mut bb = BranchBound::new(8000000, 10);
         let best = bb.search(&mut cocktails, &mut bar);
         let fset = best
             .iter()
