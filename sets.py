@@ -117,7 +117,7 @@ if __name__ == "__main__":
             name, *ingredients = row
             cocktails[frozenset(ingredients)] = name
 
-    bb = BranchBound(8000000, 10)
+    bb = BranchBound(8000000, 12)
     best = bb.search(cocktails.keys())
 
     print(f"Ingredients: {sorted(set().union(*best))}")

@@ -1,13 +1,16 @@
-use csv::ReaderBuilder;
+use rand::rngs::ThreadRng;
+/// What is the set of n ingredients that will allow you to make the highest number of different cocktails?
+/// E.g.:
+/// You have 100 different ingredients
+/// You have 20 cocktails, each of which use 2-6 ingredients
+/// Which 5 ingredients maximize the cocktail-making possibilities? What about 10 ingredients?
 use rand::seq::IteratorRandom;
-use std::collections::{HashMap, HashSet};
-use std::fs::File;
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
-use std::io::BufReader;
 
-type Ingredient = String;
+pub type Ingredient = String;
 #[derive(Debug, Clone)]
-pub struct IngredientSet(HashSet<Ingredient>);
+pub struct IngredientSet(pub HashSet<Ingredient>);
 
 impl PartialEq for IngredientSet {
     fn eq(&self, other: &IngredientSet) -> bool {
@@ -18,8 +21,14 @@ impl PartialEq for IngredientSet {
 impl Eq for IngredientSet {}
 
 impl IngredientSet {
-    fn new() -> Self {
+    pub fn new() -> Self {
         IngredientSet(HashSet::new())
+    }
+}
+
+impl Default for IngredientSet {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -42,6 +51,7 @@ pub struct BranchBound {
     pub max_size: usize,
     pub highest_score: usize,
     pub highest: HashSet<IngredientSet>,
+    pub random: ThreadRng,
 }
 
 impl BranchBound {
@@ -51,6 +61,7 @@ impl BranchBound {
             max_size,
             highest_score: 0usize,
             highest: HashSet::new(),
+            random: rand::thread_rng(),
         }
     }
 
@@ -59,7 +70,6 @@ impl BranchBound {
         candidates: &mut HashSet<IngredientSet>,
         partial: &mut HashSet<IngredientSet>,
     ) -> HashSet<IngredientSet> {
-        let mut rng = rand::thread_rng();
         if self.calls <= 0 {
             println!("{:?}", "Early return!");
             return self.highest.clone();
@@ -69,7 +79,10 @@ impl BranchBound {
         if score > self.highest_score {
             self.highest = partial.clone();
             self.highest_score = score;
-            println!("{:?}", &self.highest_score);
+            println!(
+                "Found {:?} valid ingredient combinations",
+                &self.highest_score
+            );
         }
 
         // what cocktails could be added without blowing our ingredient budget?
@@ -128,7 +141,7 @@ impl BranchBound {
 
         if !candidates.is_empty() && possible_increment > threshold {
             // random choice seems to be the best heuristic according to the original author
-            let best = candidates.iter().cloned().choose(&mut rng).unwrap();
+            let best = candidates.iter().cloned().choose(&mut self.random).unwrap();
 
             let new_partial_ingredients = &partial_ingredients.0 | &best.0;
             let covered_candidates: HashSet<IngredientSet> = candidates
@@ -153,51 +166,5 @@ impl BranchBound {
             self.search(&mut remaining, partial);
         }
         self.highest.clone()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn foo() {
-        let mut map: HashMap<IngredientSet, String> = HashMap::new();
-
-        let f = File::open("cocktails.csv").unwrap();
-        let reader = BufReader::new(f);
-        let csvr = ReaderBuilder::new()
-            .flexible(true)
-            .has_headers(false)
-            .from_reader(reader);
-        let records = csvr.into_records();
-        // populate map
-        records.for_each(|record| {
-            let r = record.unwrap();
-            let hs = r
-                .iter()
-                .skip(1)
-                .map(|s| s.to_owned())
-                .collect::<HashSet<String>>();
-            let value = r.iter().nth(0).unwrap().to_owned();
-            let mut key = IngredientSet::new();
-            key.0 = hs;
-            // println!("key {:?}", &key);
-            // println!("value {:?}", &value);
-            map.insert(key, value);
-        });
-        let mut cocktails = map.keys().cloned().collect();
-        // println!("c {:?}", &cocktails);
-        let mut bar: HashSet<IngredientSet> = HashSet::new();
-        let mut bb = BranchBound::new(8000000, 10);
-        let best = bb.search(&mut cocktails, &mut bar);
-        let fset = best
-            .iter()
-            .cloned()
-            .flat_map(|ing| ing.0)
-            .collect::<HashSet<Ingredient>>();
-        let mut v = Vec::from_iter(fset);
-        v.sort();
-        println!("Final set: {:?}", &v);
     }
 }
