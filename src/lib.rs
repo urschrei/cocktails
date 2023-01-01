@@ -66,6 +66,7 @@ impl BranchBound {
         if score > self.highest_score {
             self.highest = partial.clone();
             self.highest_score = score;
+            println!("{:?}", &self.highest_score);
         }
 
         // what cocktails could be added without blowing our ingredient budget?
@@ -102,26 +103,26 @@ impl BranchBound {
         let mut candidate_ingredients = IngredientSet::new();
         candidate_ingredients.0 = candidates_;
         let mut excess_ingredients =
-            (&candidate_ingredients.0 | &partial_ingredients.0).len() - self.max_size;
+            (&candidate_ingredients.0 | &partial_ingredients.0).len() as i32 - self.max_size as i32;
 
         // best case is that excess ingredients are concentrated in
-        // some cocktails. if we are in this best case, then if we
-        // remove the cocktails that add the most new ingredients
-        // we'll be back under the ingredient budget
+        // some cocktails. If we're in this best case, removing
+        // the cocktails that add the most new ingredients
+        // brings us back under the ingredient budget
         //
-        // note that we are just updating the bound; it could actually
+        // note that we're just updating the bound; it could actually
         // be that we want to add one of these cocktails that add
         // a lot of ingredients
         if excess_ingredients > 0 {
             let mut ingredient_increases = candidates
                 .iter()
-                .map(|cocktail| (&cocktail.0 - &partial_ingredients.0).iter().len())
-                .collect::<Vec<usize>>();
+                .map(|cocktail| (&cocktail.0 - &partial_ingredients.0).iter().len() as i32)
+                .collect::<Vec<i32>>();
             ingredient_increases.sort_by(|a, b| b.cmp(a));
             for increase in ingredient_increases {
                 possible_increment -= 1;
                 excess_ingredients -= increase;
-                if excess_ingredients <= 0 {
+                if excess_ingredients == 0 {
                     break;
                 }
             }
@@ -139,7 +140,7 @@ impl BranchBound {
                 &mut (&*candidates - &covered_candidates),
                 &mut (&*partial | &covered_candidates),
             );
-            // if a cocktail is not part of the optimum set than then
+            // if a cocktail is not part of the optimum set,
             // the optimum set cannot have the cocktail as a subset
             let mut remaining: HashSet<IngredientSet> = candidates
                 .iter()
@@ -148,11 +149,46 @@ impl BranchBound {
                 .collect();
             self.search(&mut remaining, partial);
         }
-        return self.highest.clone();
+        self.highest.clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn foo() {
+        let a = vec!["Vodka", "Dry vermouth", "Lemon", "Olive"];
+        let b = vec!["Champagne", "Orange juice", "Orange"];
+        let c = vec!["Gin", "Dry vermouth", "Lemon"];
+
+        let mut is1 = IngredientSet::new();
+        for ing in a {
+            is1.0.insert(ing.to_string());
+        }
+        let mut is2 = IngredientSet::new();
+        for ing in b {
+            is2.0.insert(ing.to_string());
+        }
+        let mut is3 = IngredientSet::new();
+        for ing in c {
+            is3.0.insert(ing.to_string());
+        }
+        let mut foo = HashSet::new();
+        foo.insert(is1);
+        foo.insert(is2);
+        foo.insert(is3);
+        let mut bar: HashSet<IngredientSet> = HashSet::new();
+        let mut bb = BranchBound::new(8000000, 16);
+        let best = bb.search(&mut foo, &mut bar);
+        let fset = best
+            .iter()
+            .cloned()
+            .flat_map(|ing| ing.0)
+            .collect::<HashSet<Ingredient>>();
+        let mut v = Vec::from_iter(fset);
+        v.sort();
+        println!("Final set: {:?}", &v);
+    }
 }
