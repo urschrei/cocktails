@@ -1,6 +1,8 @@
 use rand::seq::IteratorRandom;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::fs::File;
 use std::hash::{Hash, Hasher};
+use std::io::{BufRead, BufReader};
 
 type Ingredient = String;
 #[derive(Debug, Clone)]
@@ -87,6 +89,7 @@ impl BranchBound {
         candidates.retain(|cocktail| (&cocktail.0 | &partial_ingredients.0).len() <= self.max_size);
 
         let mut possible_increment = candidates.iter().len();
+
         let candidate_ingredients_ = candidates
             .iter()
             .cloned()
@@ -119,19 +122,25 @@ impl BranchBound {
                 }
             }
         }
+
         let threshold = self.highest_score - score;
+
         if !candidates.is_empty() && possible_increment > threshold {
+            // random choice seems to be the best heuristic according to the original author
             let best = candidates.iter().cloned().choose(&mut rng).unwrap();
+
             let new_partial_ingredients = &partial_ingredients.0 | &best.0;
             let covered_candidates: HashSet<IngredientSet> = candidates
                 .iter()
                 .cloned()
                 .filter(|cocktail| cocktail.0.is_subset(&new_partial_ingredients))
                 .collect();
+
             self.search(
                 &mut (&*candidates - &covered_candidates),
                 &mut (&*partial | &covered_candidates),
             );
+
             // if a cocktail is not part of the optimum set,
             // the optimum set cannot have the cocktail as a subset
             let mut remaining: HashSet<IngredientSet> = candidates
@@ -139,6 +148,7 @@ impl BranchBound {
                 .cloned()
                 .filter(|cocktail| !best.0.is_subset(&(&cocktail.0 | &partial_ingredients.0)))
                 .collect();
+
             self.search(&mut remaining, partial);
         }
         self.highest.clone()
@@ -151,29 +161,23 @@ mod tests {
 
     #[test]
     fn foo() {
-        let a = vec!["Vodka", "Dry vermouth", "Lemon", "Olive"];
-        let b = vec!["Champagne", "Orange juice", "Orange"];
-        let c = vec!["Gin", "Dry vermouth", "Lemon"];
+        let mut map: HashMap<IngredientSet, String> = HashMap::new();
 
-        let mut is1 = IngredientSet::new();
-        for ing in a {
-            is1.0.insert(ing.to_string());
+        let f = File::open("cocktails.csv").unwrap();
+        let reader = BufReader::new(f);
+        for line in reader.lines() {
+            let s = line.unwrap().to_string();
+            let mut key = IngredientSet::new();
+            let mut row = s.split(",").map(|s| s.to_string()).collect::<Vec<String>>();
+            let value = row.remove(0);
+            let hs = HashSet::from_iter(row);
+            key.0 = hs;
+            map.insert(key, value);
         }
-        let mut is2 = IngredientSet::new();
-        for ing in b {
-            is2.0.insert(ing.to_string());
-        }
-        let mut is3 = IngredientSet::new();
-        for ing in c {
-            is3.0.insert(ing.to_string());
-        }
-        let mut foo = HashSet::new();
-        foo.insert(is1);
-        foo.insert(is2);
-        foo.insert(is3);
+        let mut cocktails = map.keys().cloned().collect();
         let mut bar: HashSet<IngredientSet> = HashSet::new();
         let mut bb = BranchBound::new(8000000, 16);
-        let best = bb.search(&mut foo, &mut bar);
+        let best = bb.search(&mut cocktails, &mut bar);
         let fset = best
             .iter()
             .cloned()
