@@ -30,22 +30,22 @@ fn main() {
     });
     let mut cocktails = map.keys().cloned().collect();
     let mut bar: FxHashSet<IngredientSet> = FxHashSet::default();
-    let mut bb = BranchBound::new(8000000, 13);
+    let mut bb = BranchBound::new(8000000, 12);
     let best = bb.search(&mut cocktails, &mut bar);
     let fset = best
         .iter()
         .flatten()
         .cloned()
         .collect::<FxHashSet<Ingredient>>();
-    let mut v = Vec::from_iter(fset);
-    v.sort();
+    // let mut v = Vec::from_iter(fset);
+    // v.sort();
     let mut possible_cocktails = best
         .iter()
         .map(|ings| map.get(ings).unwrap())
         .collect::<Vec<_>>();
     possible_cocktails.sort();
     println!("Search rounds {:?}", bb.counter);
-    println!("Ingredient set ({}): {:?}", &v.len(), &v);
+    println!("Ingredient set ({}): {:?}", &fset.len(), &fset);
     println!(
         "Possible cocktails ({}) with this set: {:?}",
         &possible_cocktails.len(),
