@@ -4,13 +4,14 @@ use rand::rngs::ThreadRng;
 /// You have 100 different ingredients
 /// You have 20 cocktails, each of which use 2-6 ingredients
 /// Which 5 ingredients maximize the cocktail-making possibilities? What about 10 ingredients?
+/// Here's a branch and bound solution
 use rand::seq::IteratorRandom;
-use std::collections::HashSet;
+use rustc_hash::{FxHashSet, FxHasher};
 use std::hash::{Hash, Hasher};
 
 pub type Ingredient = String;
 #[derive(Debug, Clone)]
-pub struct IngredientSet(pub HashSet<Ingredient>);
+pub struct IngredientSet(pub FxHashSet<Ingredient>);
 
 impl PartialEq for IngredientSet {
     fn eq(&self, other: &IngredientSet) -> bool {
@@ -22,7 +23,7 @@ impl Eq for IngredientSet {}
 
 impl IngredientSet {
     pub fn new() -> Self {
-        IngredientSet(HashSet::new())
+        IngredientSet(FxHashSet::default())
     }
 }
 
@@ -50,7 +51,7 @@ pub struct BranchBound {
     pub calls: i32,
     pub max_size: usize,
     pub highest_score: usize,
-    pub highest: HashSet<IngredientSet>,
+    pub highest: FxHashSet<IngredientSet>,
     pub random: ThreadRng,
 }
 
@@ -60,16 +61,16 @@ impl BranchBound {
             calls: max_calls,
             max_size,
             highest_score: 0usize,
-            highest: HashSet::new(),
+            highest: FxHashSet::default(),
             random: rand::thread_rng(),
         }
     }
 
     pub fn search(
         &mut self,
-        candidates: &mut HashSet<IngredientSet>,
-        partial: &mut HashSet<IngredientSet>,
-    ) -> HashSet<IngredientSet> {
+        candidates: &mut FxHashSet<IngredientSet>,
+        partial: &mut FxHashSet<IngredientSet>,
+    ) -> FxHashSet<IngredientSet> {
         if self.calls <= 0 {
             println!("{:?}", "Early return!");
             return self.highest.clone();
@@ -90,7 +91,7 @@ impl BranchBound {
             .iter()
             .cloned()
             .flat_map(|ingredient| ingredient.0)
-            .collect::<HashSet<Ingredient>>();
+            .collect::<FxHashSet<Ingredient>>();
         let mut partial_ingredients = IngredientSet::new();
         partial_ingredients.0 = partial_ingredients_;
 
@@ -108,7 +109,7 @@ impl BranchBound {
             .iter()
             .cloned()
             .flat_map(|ing| ing.0)
-            .collect::<HashSet<Ingredient>>();
+            .collect::<FxHashSet<Ingredient>>();
         let mut candidate_ingredients = IngredientSet::new();
         candidate_ingredients.0 = candidate_ingredients_;
         let mut excess_ingredients =
@@ -144,7 +145,7 @@ impl BranchBound {
             let best = candidates.iter().cloned().choose(&mut self.random).unwrap();
 
             let new_partial_ingredients = &partial_ingredients.0 | &best.0;
-            let covered_candidates: HashSet<IngredientSet> = candidates
+            let covered_candidates: FxHashSet<IngredientSet> = candidates
                 .iter()
                 .cloned()
                 .filter(|cocktail| cocktail.0.is_subset(&new_partial_ingredients))
@@ -157,7 +158,7 @@ impl BranchBound {
 
             // if a cocktail is not part of the optimum set,
             // the optimum set cannot have the cocktail as a subset
-            let mut remaining: HashSet<IngredientSet> = candidates
+            let mut remaining: FxHashSet<IngredientSet> = candidates
                 .iter()
                 .cloned()
                 .filter(|cocktail| !best.0.is_subset(&(&cocktail.0 | &partial_ingredients.0)))

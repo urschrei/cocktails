@@ -1,11 +1,11 @@
 use branchbound::{BranchBound, Ingredient, IngredientSet};
 use csv::ReaderBuilder;
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::fs::File;
 use std::io::BufReader;
 
 fn main() {
-    let mut map: HashMap<IngredientSet, String> = HashMap::new();
+    let mut map: FxHashMap<IngredientSet, String> = FxHashMap::default();
 
     let f = File::open("cocktails.csv").unwrap();
     let reader = BufReader::new(f);
@@ -21,7 +21,7 @@ fn main() {
             .iter()
             .skip(1)
             .map(|s| s.to_owned())
-            .collect::<HashSet<String>>();
+            .collect::<FxHashSet<String>>();
         let value = r.iter().next().unwrap().to_owned();
         let mut key = IngredientSet::new();
         key.0 = hs;
@@ -30,14 +30,14 @@ fn main() {
         map.insert(key, value);
     });
     let mut cocktails = map.keys().cloned().collect();
-    let mut bar: HashSet<IngredientSet> = HashSet::new();
+    let mut bar: FxHashSet<IngredientSet> = FxHashSet::default();
     let mut bb = BranchBound::new(8000000, 13);
     let best = bb.search(&mut cocktails, &mut bar);
     let fset = best
         .iter()
         .cloned()
         .flat_map(|ing| ing.0)
-        .collect::<HashSet<Ingredient>>();
+        .collect::<FxHashSet<Ingredient>>();
     let mut v = Vec::from_iter(fset);
     v.sort();
     let mut possible_cocktails = best
