@@ -11,5 +11,5 @@ rand = "0.8.5"
 rustc-hash = "1.1.0"
 
 [profile.release]
-debug = true
+debug = 1
 codegen-units = 1
