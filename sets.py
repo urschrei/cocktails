@@ -33,7 +33,6 @@ class BranchBound(object):
         if score > self.highest_score:
             self.highest = partial
             self.highest_score = score
-            print(self.highest_score)
 
         # what cocktails could be added without going over our
         # ingredient budget?
@@ -119,7 +118,8 @@ if __name__ == "__main__":
             name, *ingredients = row
             cocktails[frozenset(ingredients)] = name
 
-    bb = BranchBound(8000000, 12)
+    bb = BranchBound(8000000, 3)
     best = bb.search(cocktails.keys())
     print(f"Rounds: {bb.rounds}")
-    print(f"Ingredients: {sorted(set().union(*best))}")
+    print(f"Optimum Ingredient set: {sorted(set().union(*best))}")
+    print(f"Possible cocktails with this set: {sorted(cocktails[k] for k in best)}")
