@@ -49,10 +49,6 @@ impl BranchBound {
         if score > self.highest_score {
             self.highest = partial.clone();
             self.highest_score = score;
-            println!(
-                "Found {:?} valid ingredient combinations",
-                &self.highest_score
-            );
         }
 
         // what cocktails could be added without blowing our ingredient budget?
@@ -107,10 +103,10 @@ impl BranchBound {
 
         if !candidates.is_empty() && possible_increment > threshold {
             // random choice seems to be the best heuristic according to the original author
-            let best = candidates.iter().cloned().choose(&mut self.random).unwrap();
+            let best = candidates.iter().choose(&mut self.random).unwrap().clone();
 
             let new_partial_ingredients = &partial_ingredients | &best;
-            let covered_candidates: FxHashSet<IngredientSet> = candidates
+            let covered_candidates = candidates
                 .iter()
                 .cloned()
                 .filter(|cocktail| cocktail.is_subset(&new_partial_ingredients))
