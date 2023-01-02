@@ -13,10 +13,12 @@ class BranchBound(object):
 
         self.highest_score: int = 0
         self.highest: Cocktails = set()
+        self.rounds: int = 0
 
     def search(
         self, candidates: Cocktails, partial: Optional[Cocktails] = None
     ) -> Cocktails:
+        self.rounds += 1
         if partial is None:
             partial = set()
 
@@ -119,5 +121,5 @@ if __name__ == "__main__":
 
     bb = BranchBound(8000000, 12)
     best = bb.search(cocktails.keys())
-
+    print(f"Rounds: {bb.rounds}")
     print(f"Ingredients: {sorted(set().union(*best))}")

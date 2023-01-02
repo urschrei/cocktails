@@ -1,6 +1,7 @@
 use branchbound::{BranchBound, Ingredient, IngredientSet};
 use csv::ReaderBuilder;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::BufReader;
 
@@ -17,14 +18,12 @@ fn main() {
     // populate map
     records.for_each(|record| {
         let r = record.unwrap();
-        let hs = r
+        let key = r
             .iter()
             .skip(1)
             .map(|s| s.to_owned())
-            .collect::<FxHashSet<String>>();
+            .collect::<BTreeSet<String>>();
         let value = r.iter().next().unwrap().to_owned();
-        let mut key = IngredientSet::new();
-        key.0 = hs;
         // println!("key {:?}", &key);
         // println!("value {:?}", &value);
         map.insert(key, value);
@@ -35,8 +34,8 @@ fn main() {
     let best = bb.search(&mut cocktails, &mut bar);
     let fset = best
         .iter()
+        .flatten()
         .cloned()
-        .flat_map(|ing| ing.0)
         .collect::<FxHashSet<Ingredient>>();
     let mut v = Vec::from_iter(fset);
     v.sort();
@@ -45,6 +44,7 @@ fn main() {
         .map(|ings| map.get(ings).unwrap())
         .collect::<Vec<_>>();
     possible_cocktails.sort();
+    println!("Search rounds {:?}", bb.counter);
     println!("Ingredient set ({}): {:?}", &v.len(), &v);
     println!(
         "Possible cocktails ({}) with this set: {:?}",

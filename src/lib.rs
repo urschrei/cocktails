@@ -6,45 +6,11 @@ use rand::rngs::ThreadRng;
 /// Which 5 ingredients maximize the cocktail-making possibilities? What about 10 ingredients?
 /// Here's a branch and bound solution
 use rand::seq::IteratorRandom;
-use rustc_hash::{FxHashSet, FxHasher};
-use std::hash::{Hash, Hasher};
+use rustc_hash::FxHashSet;
+use std::collections::BTreeSet;
 
 pub type Ingredient = String;
-#[derive(Debug, Clone)]
-pub struct IngredientSet(pub FxHashSet<Ingredient>);
-
-impl PartialEq for IngredientSet {
-    fn eq(&self, other: &IngredientSet) -> bool {
-        self.0.is_subset(&other.0) && other.0.is_subset(&self.0)
-    }
-}
-
-impl Eq for IngredientSet {}
-
-impl IngredientSet {
-    pub fn new() -> Self {
-        IngredientSet(FxHashSet::default())
-    }
-}
-
-impl Default for IngredientSet {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Hash for IngredientSet {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        let mut a: Vec<&Ingredient> = self.0.iter().collect();
-        a.sort();
-        for s in a.iter() {
-            s.hash(state);
-        }
-    }
-}
+pub type IngredientSet = BTreeSet<Ingredient>;
 
 #[derive(Debug)]
 pub struct BranchBound {
@@ -53,6 +19,7 @@ pub struct BranchBound {
     pub highest_score: usize,
     pub highest: FxHashSet<IngredientSet>,
     pub random: ThreadRng,
+    pub counter: u32,
 }
 
 impl BranchBound {
@@ -63,6 +30,7 @@ impl BranchBound {
             highest_score: 0usize,
             highest: FxHashSet::default(),
             random: rand::thread_rng(),
+            counter: 0,
         }
     }
 
@@ -71,6 +39,7 @@ impl BranchBound {
         candidates: &mut FxHashSet<IngredientSet>,
         partial: &mut FxHashSet<IngredientSet>,
     ) -> FxHashSet<IngredientSet> {
+        self.counter += 1;
         if self.calls <= 0 {
             println!("{:?}", "Early return!");
             return self.highest.clone();
@@ -87,13 +56,11 @@ impl BranchBound {
         }
 
         // what cocktails could be added without blowing our ingredient budget?
-        let partial_ingredients_ = partial
+        let partial_ingredients = partial
             .iter()
+            .flatten()
             .cloned()
-            .flat_map(|ingredient| ingredient.0)
-            .collect::<FxHashSet<Ingredient>>();
-        let mut partial_ingredients = IngredientSet::new();
-        partial_ingredients.0 = partial_ingredients_;
+            .collect::<BTreeSet<Ingredient>>();
 
         // if adding all the associated ingredients of the candidates
         // takes us over the ingredient budget, then not all the
@@ -101,19 +68,17 @@ impl BranchBound {
         // solution. So, if there will be excess ingredients we'll
         // reduce the upper bound of how many cocktails we might be
         // able to cover (possible_increment)
-        candidates.retain(|cocktail| (&cocktail.0 | &partial_ingredients.0).len() <= self.max_size);
+        candidates.retain(|cocktail| (cocktail | &partial_ingredients).len() <= self.max_size);
 
         let mut possible_increment = candidates.iter().len();
 
-        let candidate_ingredients_ = candidates
+        let candidate_ingredients = candidates
             .iter()
+            .flatten()
             .cloned()
-            .flat_map(|ing| ing.0)
-            .collect::<FxHashSet<Ingredient>>();
-        let mut candidate_ingredients = IngredientSet::new();
-        candidate_ingredients.0 = candidate_ingredients_;
+            .collect::<BTreeSet<Ingredient>>();
         let mut excess_ingredients =
-            (&candidate_ingredients.0 | &partial_ingredients.0).len() as i32 - self.max_size as i32;
+            (&candidate_ingredients | &partial_ingredients).len() as i32 - self.max_size as i32;
 
         // best case is that excess ingredients are concentrated in
         // some cocktails. If we're in this best case, removing
@@ -126,7 +91,7 @@ impl BranchBound {
         if excess_ingredients > 0 {
             let mut ingredient_increases = candidates
                 .iter()
-                .map(|cocktail| (&cocktail.0 - &partial_ingredients.0).len() as i32)
+                .map(|cocktail| (cocktail - &partial_ingredients).len() as i32)
                 .collect::<Vec<i32>>();
             ingredient_increases.sort_by(|a, b| b.cmp(a));
             for increase in ingredient_increases {
@@ -144,11 +109,11 @@ impl BranchBound {
             // random choice seems to be the best heuristic according to the original author
             let best = candidates.iter().cloned().choose(&mut self.random).unwrap();
 
-            let new_partial_ingredients = &partial_ingredients.0 | &best.0;
+            let new_partial_ingredients = &partial_ingredients | &best;
             let covered_candidates: FxHashSet<IngredientSet> = candidates
                 .iter()
                 .cloned()
-                .filter(|cocktail| cocktail.0.is_subset(&new_partial_ingredients))
+                .filter(|cocktail| cocktail.is_subset(&new_partial_ingredients))
                 .collect();
 
             self.search(
@@ -161,7 +126,7 @@ impl BranchBound {
             let mut remaining: FxHashSet<IngredientSet> = candidates
                 .iter()
                 .cloned()
-                .filter(|cocktail| !best.0.is_subset(&(&cocktail.0 | &partial_ingredients.0)))
+                .filter(|cocktail| !best.is_subset(&(cocktail | &partial_ingredients)))
                 .collect();
 
             self.search(&mut remaining, partial);
