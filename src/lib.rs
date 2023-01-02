@@ -123,13 +123,8 @@ impl BranchBound {
 
             // if a cocktail is not part of the optimum set,
             // the optimum set cannot have the cocktail as a subset
-            let mut remaining: FxHashSet<IngredientSet> = candidates
-                .iter()
-                .cloned()
-                .filter(|cocktail| !best.is_subset(&(cocktail | &partial_ingredients)))
-                .collect();
-
-            self.search(&mut remaining, partial);
+            candidates.retain(|cocktail| !best.is_subset(&(cocktail | &partial_ingredients)));
+            self.search(candidates, partial);
         }
         self.highest.clone()
     }
