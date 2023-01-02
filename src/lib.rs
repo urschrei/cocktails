@@ -1,10 +1,11 @@
+//! What is the set of n ingredients that will allow you to make the highest number of different cocktails?
+//! E.g.:
+//! You have 117 different ingredients
+//! You have 104 cocktails, each of which use 2-6 ingredients
+//! Which 5 ingredients maximize the cocktail-making possibilities? What about 10 ingredients?
+//! Here's a branch and bound solution
+//! Original here: https://gist.github.com/tmcw/c6bdcfe505057ed6a0f356cfd02d4d52
 use rand::rngs::ThreadRng;
-/// What is the set of n ingredients that will allow you to make the highest number of different cocktails?
-/// E.g.:
-/// You have 100 different ingredients
-/// You have 20 cocktails, each of which use 2-6 ingredients
-/// Which 5 ingredients maximize the cocktail-making possibilities? What about 10 ingredients?
-/// Here's a branch and bound solution
 use rand::seq::IteratorRandom;
 use rustc_hash::FxHashSet;
 use std::collections::BTreeSet;
@@ -45,13 +46,14 @@ impl BranchBound {
             return self.highest.clone();
         }
         self.calls -= 1;
-        let score = partial.iter().len();
+        let score = partial.len();
         if score > self.highest_score {
             self.highest = partial.clone();
             self.highest_score = score;
         }
 
         // what cocktails could be added without blowing our ingredient budget?
+        // this will be empty on the first iteration
         let partial_ingredients = partial
             .iter()
             .flatten()
@@ -66,7 +68,7 @@ impl BranchBound {
         // able to cover (possible_increment)
         candidates.retain(|cocktail| (cocktail | &partial_ingredients).len() <= self.max_size);
 
-        let mut possible_increment = candidates.iter().len();
+        let mut possible_increment = candidates.len();
 
         let candidate_ingredients = candidates
             .iter()

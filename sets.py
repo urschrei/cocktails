@@ -1,3 +1,8 @@
+"""
+Original here: https://gist.github.com/tmcw/c6bdcfe505057ed6a0f356cfd02d4d52?permalink_comment_id=3357246#gistcomment-3357246
+Author: Forest Gregg
+"""
+
 import random
 from typing import AbstractSet, Set, FrozenSet, Optional
 
@@ -118,7 +123,7 @@ if __name__ == "__main__":
             name, *ingredients = row
             cocktails[frozenset(ingredients)] = name
 
-    bb = BranchBound(8000000, 3)
+    bb = BranchBound(8000000, 12)
     best = bb.search(cocktails.keys())
     print(f"Rounds: {bb.rounds}")
     print(f"Optimum Ingredient set: {sorted(set().union(*best))}")
