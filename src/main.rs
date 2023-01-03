@@ -1,7 +1,6 @@
 use branchbound::{BranchBound, Ingredient, IngredientSet};
 use csv::ReaderBuilder;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::BufReader;
 
