@@ -58,7 +58,7 @@ impl BranchBound {
             .iter()
             .flatten()
             .cloned()
-            .collect::<BTreeSet<Ingredient>>();
+            .collect::<IngredientSet>();
 
         // if adding all the associated ingredients of the candidates
         // takes us over the ingredient budget, then not all the
@@ -74,7 +74,7 @@ impl BranchBound {
             .iter()
             .flatten()
             .cloned()
-            .collect::<BTreeSet<Ingredient>>();
+            .collect::<IngredientSet>();
         let mut excess_ingredients =
             (&candidate_ingredients | &partial_ingredients).len() as i32 - self.max_size as i32;
 

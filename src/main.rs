@@ -22,7 +22,7 @@ fn main() {
             .iter()
             .skip(1)
             .map(|s| s.to_owned())
-            .collect::<BTreeSet<String>>();
+            .collect::<IngredientSet>();
         let value = r.iter().next().unwrap().to_owned();
         // println!("key {:?}", &key);
         // println!("value {:?}", &value);
