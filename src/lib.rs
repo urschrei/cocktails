@@ -238,6 +238,7 @@ impl BranchBound {
 
             // if a cocktail is not part of the optimum set,
             // the optimum set cannot have the cocktail as a subset
+            candidates.remove(&best);
             candidates.retain(|cocktail| !best.is_subset(&(cocktail | &partial_ingredients)));
             self.search(candidates, partial);
         }
