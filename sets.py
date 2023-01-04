@@ -1,9 +1,9 @@
 """
 Original here: https://gist.github.com/tmcw/c6bdcfe505057ed6a0f356cfd02d4d52?permalink_comment_id=3357246#gistcomment-3357246
+Revised version here: https://replit.com/@fgregg/cocktails 
 Author: Forest Gregg
 """
 
-import random
 from typing import AbstractSet, Set, FrozenSet, Optional
 
 Cocktail = FrozenSet[str]
@@ -18,14 +18,30 @@ class BranchBound(object):
 
         self.highest_score: int = 0
         self.highest: Cocktails = set()
-        self.rounds: int = 0
+        self.highest_ingredients = set()
+
+        self.min_cover = {}
 
     def search(
         self, candidates: Cocktails, partial: Optional[Cocktails] = None
     ) -> Cocktails:
-        self.rounds += 1
+
         if partial is None:
+            # We'll only hit this conditional on the first call, so
+            # we set up our cocktail scoring dictionary
             partial = set()
+            cardinality = {}
+            for cocktail in candidates:
+                for ingredient in cocktail:
+                    if ingredient in cardinality:
+                        cardinality[ingredient] += 1
+                    else:
+                        cardinality[ingredient] = 1
+
+            for cocktail in candidates:
+                self.min_cover[cocktail] = min(
+                    cardinality[ingredient] for ingredient in cocktail
+                )
 
         if self.calls <= 0:
             print("early stop")
@@ -38,6 +54,10 @@ class BranchBound(object):
         if score > self.highest_score:
             self.highest = partial
             self.highest_score = score
+            self.highest_ingredients = frozenset.union(*self.highest)
+            # print(sorted(cocktails[k] for k in self.highest))
+            # print(self.highest_score)
+            # print(len(self.highest_ingredients))
 
         # what cocktails could be added without going over our
         # ingredient budget?
@@ -49,7 +69,7 @@ class BranchBound(object):
             if len(cocktail | partial_ingredients) <= self.max_size
         }
 
-        possible_increment = len(candidates)
+        upper_increment = len(candidates)
 
         # if adding all the associated ingredients of the candidates
         # takes us over the ingredient budget, then not all the
@@ -64,6 +84,26 @@ class BranchBound(object):
         )
 
         if excess_ingredients > 0:
+            # There are many cocktails that have an unique ingredient.
+            #
+            # Each cocktail with a unique ingredient will cost at least
+            # one ingredient from our ingredient budget, and the total
+            # possible increase due to these unique cocktails is bounded
+            # by the ingredient budget
+
+            n_unique_cocktails = sum(
+                1 for cocktail in candidates if self.min_cover[cocktail] == 1
+            )
+            ingredient_budget = self.max_size - len(partial_ingredients)
+
+            upper_increment_a = (
+                len(candidates)
+                - n_unique_cocktails
+                + min(n_unique_cocktails, ingredient_budget)
+            )
+
+            # alternatively:
+            #
             # best case is that excess ingredients are concentrated in
             # some cocktails. if we are in this best case, then if we
             # remove the cocktails that add the most new ingredients
@@ -72,23 +112,26 @@ class BranchBound(object):
             # note that we are just updating the bound. it could actually
             # be that we want to add one of these cocktails that add
             # a lot of ingredients
+            upper_increment_b = len(candidates)
             ingredient_increases = sorted(
                 (len(cocktail - partial_ingredients) for cocktail in candidates),
                 reverse=True,
             )
             for ingredient_increase in ingredient_increases:
-                possible_increment -= 1
-                excess_ingredients -= ingredient_increase
                 if excess_ingredients <= 0:
                     break
+                upper_increment_b -= 1
+                excess_ingredients -= ingredient_increase
 
-        threshold = self.highest_score - score
+            upper_increment = min(upper_increment_a, upper_increment)
 
-        if candidates and possible_increment > threshold:
+        window = self.highest_score - score
 
-            # i've tried a few heuristics like "next smallest
-            # cocktail," and a random choice seems to be best so far
-            best = min(candidates, key=lambda x: random.random())
+        if candidates and upper_increment > window:
+
+            # the best heuristic i've found is to pick the candidates
+            # is the least unique in its ingredient list
+            best = max(candidates, key=lambda x: self.min_cover[x])
 
             new_partial_ingredients = partial_ingredients | best
             covered_candidates = {
@@ -125,6 +168,6 @@ if __name__ == "__main__":
 
     bb = BranchBound(8000000, 12)
     best = bb.search(cocktails.keys())
-    print(f"Rounds: {bb.rounds}")
-    print(f"Optimum Ingredient set: {sorted(set().union(*best))}")
-    print(f"Possible cocktails with this set: {sorted(cocktails[k] for k in best)}")
+
+    print(sorted(set().union(*best)))
+    print(sorted(cocktails[k] for k in best))

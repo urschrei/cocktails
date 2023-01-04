@@ -24,12 +24,12 @@ By "not great" I mean:
 
 Note that time complexity rises pretty steeply: producing a list of 16 ingredients takes almost ten minutes.
 
-Both versions take around 180k iterations to converge on a solution. It should be noted that this doesn't produce a single optimal solution (since some ingredients and / or ingredient combinations can produce the same number of cocktails). It does produce a *good* solution. In concrete terms, if you can choose any 12 ingredients from the [list](cocktails.csv), you should choose:
+Both versions take around 100k iterations to converge on a solution. While we previously used a random remaining candidate cocktail to test the quality of our current search – which resulted in a lot of "misses" – we now use a new heuristic: the cocktail among the remaining candidates which is the "least unique" in its ingredients. This has almost halved the number of search rounds, and produces an optimal solution for this heuristic:
 
 1. Champagne
 2. Cognac
 3. Crème de cassis
-4. Dry white wine
+4. Galliano
 5. Gin
 6. Grenadine
 7. Lemon juice
@@ -46,8 +46,8 @@ Allowing you to mix:
 3. Daiquiri
 4. French 75
 5. Gimlet
-6. Kir
-7. Kir royal
-8. Sidecar
-9. Stinger
-10. White lady
+6. Kir royal
+7. Sidecar
+8. Stinger
+9. White lady
+10. Yellow bird
