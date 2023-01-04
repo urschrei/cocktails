@@ -7,7 +7,7 @@
 //! Original here: https://gist.github.com/tmcw/c6bdcfe505057ed6a0f356cfd02d4d52
 use rand::rngs::ThreadRng;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::BTreeSet;
+use std::{cmp::Ordering, collections::BTreeSet};
 
 pub type Ingredient = String;
 pub type IngredientSet = BTreeSet<Ingredient>;
@@ -22,6 +22,17 @@ pub struct BranchBound {
     pub random: ThreadRng,
     pub counter: u32,
     pub min_cover: FxHashMap<BTreeSet<String>, i32>,
+    pub min_amortized_cost: FxHashMap<BTreeSet<String>, f64>,
+}
+
+/// This will obviously explode on NaN values
+fn cmp_f64(a: &f64, b: &f64) -> Ordering {
+    if a < b {
+        return Ordering::Less;
+    } else if a > b {
+        return Ordering::Greater;
+    }
+    Ordering::Equal
 }
 
 impl BranchBound {
@@ -35,6 +46,7 @@ impl BranchBound {
             random: rand::thread_rng(),
             counter: 0,
             min_cover: FxHashMap::default(),
+            min_amortized_cost: FxHashMap::default(),
         }
     }
 
@@ -60,7 +72,7 @@ impl BranchBound {
             self.highest_score = score;
         }
 
-        // first run-through, so populate min_cover and cocktail cardinality
+        // first run-through, so populate min_cover, amortized cost and cocktail cardinality
         if partial.is_empty() {
             let mut cardinality = FxHashMap::default();
             candidates
@@ -76,6 +88,23 @@ impl BranchBound {
                         .map(|ingredient| cardinality.get(ingredient).unwrap())
                         .min()
                         .unwrap(),
+                );
+                // we can calculate the minimum amortized cost for each cocktail:
+                // if we were to have enough
+                // ingredients to make all the cocktails, how much should
+                // we pay, in ingredient-cost, for each cocktail. For
+                // example, if a cocktail has a unique ingredient, and two
+                // other ingredients shared by one other cocktail, then the
+                // amortized cost would be 1/1 + 1/2 + 1/2 = 2
+                //
+                // The minimum amortized cost is a lower bound on how much
+                // we will ever pay in ingredient cost for a cocktail.
+                self.min_amortized_cost.insert(
+                    cocktail.clone(),
+                    cocktail
+                        .iter()
+                        .map(|ingredient| 1f64 / *cardinality.get(ingredient).unwrap() as f64)
+                        .sum::<f64>(),
                 );
             });
         }
@@ -103,6 +132,10 @@ impl BranchBound {
             (&candidate_ingredients | &partial_ingredients).len() as i32 - self.max_size as i32;
 
         if excess_ingredients > 0 {
+            // We will calculate three upper bounds on the possible cocktail
+            // increment, and then we'll choose the tightest bound.
+
+            // Firstly
             // There are many cocktails that have a unique ingredient.
             //
             // Each cocktail with a unique ingredient will cost at least
@@ -114,10 +147,10 @@ impl BranchBound {
                 .filter(|cocktail| self.min_cover.get(cocktail).unwrap() == &1)
                 .count();
             let ingredient_budget = self.max_size - partial_ingredients.len();
-            upper_increment =
+            let upper_increment_a =
                 candidates.len() - n_unique_cocktails + n_unique_cocktails.min(ingredient_budget);
 
-            // Alternatively:
+            // Secondly:
             // The best case is that excess ingredients are concentrated in
             // some cocktails. If we're in this best case, removing
             // the cocktails that add the most new ingredients
@@ -139,7 +172,40 @@ impl BranchBound {
                     break;
                 }
             }
-            upper_increment = upper_increment.min(upper_increment_b);
+
+            // Thirdly:
+            //
+            // we can see how many more cocktails we can fit into the ingredient
+            // budget assuming minimum, amortized costs for all cocktails
+
+            // amortized_budget = self.max_size - sum(
+            //     self.min_amortized_cost[cocktail] for cocktail in partial
+            // )
+            let amortized_budget = self.max_size as f64
+                - partial
+                    .iter()
+                    .map(|cocktail| self.min_amortized_cost.get(cocktail).unwrap())
+                    .sum::<f64>();
+            let mut candidate_amortized_costs = candidates
+                .iter()
+                .map(|cocktail| *self.min_amortized_cost.get(cocktail).unwrap())
+                .collect::<Vec<f64>>();
+            candidate_amortized_costs.sort_by(cmp_f64);
+
+            let mut total_cost = 0.0;
+            let mut upper_increment_c = 0;
+            for cost in candidate_amortized_costs {
+                total_cost += cost;
+                if total_cost > amortized_budget {
+                    break;
+                }
+                upper_increment_c += 1
+            }
+
+            upper_increment = *[upper_increment_a, upper_increment_b, upper_increment_c]
+                .iter()
+                .min()
+                .unwrap();
         }
 
         let window = self.highest_score - score;
@@ -149,11 +215,11 @@ impl BranchBound {
             // which is the "least unique" in its ingredient list
             let best = candidates
                 .iter()
-                .max_by(|a, b| {
-                    self.min_cover
-                        .get(a)
-                        .unwrap()
-                        .cmp(self.min_cover.get(b).unwrap())
+                .min_by(|a, b| {
+                    cmp_f64(
+                        self.min_amortized_cost.get(a).unwrap(),
+                        self.min_amortized_cost.get(b).unwrap(),
+                    )
                 })
                 .unwrap()
                 .clone();

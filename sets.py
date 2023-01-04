@@ -1,7 +1,6 @@
 """
-Original here: https://gist.github.com/tmcw/c6bdcfe505057ed6a0f356cfd02d4d52?permalink_comment_id=3357246#gistcomment-3357246
-Revised version here: https://replit.com/@fgregg/cocktails 
-Author: Forest Gregg
+Latest version from https://github.com/fgregg/cocktails/blob/866ddc12af604c787c229f1fb9d3875eb9fb4483/cocktails.py
+(04/01/2023)
 """
 
 from typing import AbstractSet, Set, FrozenSet, Optional
@@ -18,9 +17,9 @@ class BranchBound(object):
 
         self.highest_score: int = 0
         self.highest: Cocktails = set()
-        self.highest_ingredients = set()
 
-        self.min_cover = {}
+        self.min_amortized_cost: dict[Cocktail, float] = {}
+        self.min_cover: dict[Cocktail, int] = {}
 
     def search(
         self, candidates: Cocktails, partial: Optional[Cocktails] = None
@@ -30,7 +29,7 @@ class BranchBound(object):
             # We'll only hit this conditional on the first call, so
             # we set up our cocktail scoring dictionary
             partial = set()
-            cardinality = {}
+            cardinality: dict[str, int] = {}
             for cocktail in candidates:
                 for ingredient in cocktail:
                     if ingredient in cardinality:
@@ -38,7 +37,20 @@ class BranchBound(object):
                     else:
                         cardinality[ingredient] = 1
 
+            # For each cocktail, we can calculate the minimum
+            # amoritized cost. That is, if we were to have enough
+            # ingredients to make all the cocktails, how much should
+            # we pay, in ingredient-cost, for each cocktail. For
+            # example, if a cocktail has a unique ingredient, and two
+            # other ingredients shared by one other cocktail, then the
+            # amortized cost would be 1/1 + 1/2 + 1/2 = 2
+            #
+            # The minimum amoritized cost is a lower bound to how much
+            # we will ever pay in ingredient cost for a cocktail.
             for cocktail in candidates:
+                self.min_amortized_cost[cocktail] = sum(
+                    1 / cardinality[ingredient] for ingredient in cocktail
+                )
                 self.min_cover[cocktail] = min(
                     cardinality[ingredient] for ingredient in cocktail
                 )
@@ -54,10 +66,6 @@ class BranchBound(object):
         if score > self.highest_score:
             self.highest = partial
             self.highest_score = score
-            self.highest_ingredients = frozenset.union(*self.highest)
-            # print(sorted(cocktails[k] for k in self.highest))
-            # print(self.highest_score)
-            # print(len(self.highest_ingredients))
 
         # what cocktails could be added without going over our
         # ingredient budget?
@@ -84,6 +92,11 @@ class BranchBound(object):
         )
 
         if excess_ingredients > 0:
+            # We will calculate three upper bounds to the possible cocktail
+            # increment, and then we'll choose the tightest bound.
+
+            # Firstly,
+            #
             # There are many cocktails that have an unique ingredient.
             #
             # Each cocktail with a unique ingredient will cost at least
@@ -102,7 +115,7 @@ class BranchBound(object):
                 + min(n_unique_cocktails, ingredient_budget)
             )
 
-            # alternatively:
+            # secondly:
             #
             # best case is that excess ingredients are concentrated in
             # some cocktails. if we are in this best case, then if we
@@ -112,18 +125,40 @@ class BranchBound(object):
             # note that we are just updating the bound. it could actually
             # be that we want to add one of these cocktails that add
             # a lot of ingredients
-            upper_increment_b = len(candidates)
             ingredient_increases = sorted(
                 (len(cocktail - partial_ingredients) for cocktail in candidates),
                 reverse=True,
             )
+
+            upper_increment_b = len(candidates)
             for ingredient_increase in ingredient_increases:
                 if excess_ingredients <= 0:
                     break
                 upper_increment_b -= 1
                 excess_ingredients -= ingredient_increase
 
-            upper_increment = min(upper_increment_a, upper_increment)
+            # thirdly:
+            #
+            # we can see how many more cocktails we can fit into the ingredient
+            # budget assuming minimum, amortized costs for all cocktails
+            amortized_budget = self.max_size - sum(
+                self.min_amortized_cost[cocktail] for cocktail in partial
+            )
+            candidate_amortized_costs = sorted(
+                self.min_amortized_cost[cocktail] for cocktail in candidates
+            )
+
+            total_cost = 0.0
+            upper_increment_c = 0
+            for cost in candidate_amortized_costs:
+                total_cost += cost
+                if total_cost > amortized_budget:
+                    break
+                upper_increment_c += 1
+
+            upper_increment = min(
+                upper_increment_a, upper_increment_b, upper_increment_c
+            )
 
         window = self.highest_score - score
 
@@ -131,7 +166,7 @@ class BranchBound(object):
 
             # the best heuristic i've found is to pick the candidates
             # is the least unique in its ingredient list
-            best = max(candidates, key=lambda x: self.min_cover[x])
+            best = min(candidates, key=lambda x: self.min_amortized_cost[x])
 
             new_partial_ingredients = partial_ingredients | best
             covered_candidates = {
@@ -142,11 +177,11 @@ class BranchBound(object):
 
             self.search(candidates - covered_candidates, partial | covered_candidates)
 
-            # if a cocktail is not part of the optimum set than then
+            # if a cocktail is not part of the optimum set then then
             # the optimum set cannot have the cocktail as a subset
             remaining = {
                 cocktail
-                for cocktail in candidates - set(best)
+                for cocktail in candidates - set([best])
                 if not (best <= (cocktail | partial_ingredients))
             }
 
