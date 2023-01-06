@@ -11,8 +11,7 @@ Can we work out an "ideal" list of cocktail ingredients of an **arbitrary length
 
 This is – in an abstract sense – a classic combinatorial optimisation problem. One way of solving combinatorics problems is ["branch and bound"](https://en.wikipedia.org/wiki/Branch_and_bound) (BnB). This is a Rust implementation of the solution provided by Forest Gregg (reproduced here, lightly edited).
 
-The Rust version doesn't currently have great performance compared to the Python version as it uses a `BTreeSet` to hold ingredients and these sets – of varying length – are recalculated frequently as the algorithm runs. Unfortunately, `BTreeSet` uses [hashbrown](https://stackoverflow.com/q/20832279/416626) as its hashing algorithm, and it's far too high-quality (slow) compared to [the hashing algorithm used](https://stackoverflow.com/q/20832279/416626) for Python's `frozenset`. I have some ideas for replacing `BTreeSet` which will hopefully give an order-of-magnitude speedup over the Python version, but we shall see.
-
+The Rust version doesn't currently have great performance compared to the Python version as it uses a `BTreeSet` to hold ingredients and these sets – of varying length – are recalculated frequently as the algorithm runs. Unfortunately, `BTreeSet` uses [hashbrown](https://stackoverflow.com/q/20832279/416626) as its hashing algorithm, and it's far too high-quality (slow) compared to [the hashing algorithm used](https://stackoverflow.com/q/20832279/416626) for Python's `frozenset`. 
 ## Running the code
 Run `cargo build --release`. The binary (from [`main.rs`](src/main.rs)) can be run using e.g. `./target/release/branchbound`
 
@@ -22,11 +21,11 @@ By "not great" I mean that the time to calculate a set of **12** ingredients on 
 - 5 wall-clock seconds using Rust 1.66 (37.5 % faster)
 - 8 wall-clock seconds using Python 3.9
 
-This isn't a great result for Rust, and getting to this speed increase involved building lookup tables to map the ingredients and cocktail names to unique `i32` values (considerably faster to hash than `String`), in order to work around the fact that Rust's `std` Swisstable-based BTreeSet isn't able to trade hash quality for performance, and doesn't offer or a choice of alternative hashers e.g. FNV or FxHash. Without this optimisation, Rust takes around 18 seconds to complete the search.
+This isn't a great result for Rust, and getting to this speed increase involved building lookup tables to map the ingredients and cocktail names to unique `i32` values (considerably faster to hash than `String`), in order to work around the relatively slow `std` Swisstable-based `BTreeSet` hash algorithm.
 
 Note that time complexity rises pretty steeply: producing a list of 16 ingredients takes almost ten minutes.
 
-Both versions take around 125k iterations to converge on a solution. While we previously used a random remaining candidate cocktail to test the quality of our current search – which resulted in a lot of "misses" – we now use a new heuristic: the cocktail among the remaining candidates which is the "least unique" in its ingredients, calculated using a minimum amortized cost function. This has almost halved the number of search rounds, and produces an optimal solution for this heuristic:
+Both versions take around 125k iterations to converge on a solution. While we previously used a random remaining candidate cocktail to test the quality of our current search – which resulted in a lot of "misses" – [we now use a new heuristic](https://github.com/fgregg/cocktails): the cocktail among the remaining candidates which is the "least unique" in its ingredients, calculated using a minimum amortized cost function. This has almost halved the number of search rounds, and produces an optimal solution for this heuristic:
 
 1. Amaretto
 2. Champagne
