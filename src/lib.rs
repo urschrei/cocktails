@@ -232,7 +232,10 @@ impl BranchBound {
             let covered_candidates = candidates
                 .iter()
                 .cloned()
-                .filter(|cocktail| cocktail.is_subset(&new_partial_ingredients))
+                .filter(|cocktail| {
+                    cocktail.is_subset(&new_partial_ingredients)
+                        || cocktail == &new_partial_ingredients
+                })
                 .collect();
 
             self.search(
@@ -243,7 +246,10 @@ impl BranchBound {
             // if a cocktail is not part of the optimum set,
             // the optimum set cannot have the cocktail as a subset
             candidates.remove(&best);
-            candidates.retain(|cocktail| !best.is_subset(&(cocktail | &partial_ingredients)));
+            candidates.retain(|cocktail| {
+                let test = cocktail | &partial_ingredients;
+                !best.is_subset(&test) && best != test
+            });
             self.search(candidates, partial);
         }
         self.highest.clone()

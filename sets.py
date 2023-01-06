@@ -12,6 +12,7 @@ Ingredients = Set[str]
 
 class BranchBound(object):
     def __init__(self, max_calls: int, max_size: int) -> None:
+        self.rounds: int = 0
         self.calls: int = max_calls
         self.max_size: int = max_size
 
@@ -24,7 +25,7 @@ class BranchBound(object):
     def search(
         self, candidates: Cocktails, partial: Optional[Cocktails] = None
     ) -> Cocktails:
-
+        self.rounds += 1
         if partial is None:
             # We'll only hit this conditional on the first call, so
             # we set up our cocktail scoring dictionary
@@ -204,5 +205,6 @@ if __name__ == "__main__":
     bb = BranchBound(8000000, 12)
     best = bb.search(cocktails.keys())
 
+    print(f"Rounds: {bb.rounds}")
     print(sorted(set().union(*best)))
     print(sorted(cocktails[k] for k in best))

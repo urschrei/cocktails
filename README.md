@@ -19,24 +19,24 @@ Run `cargo build --release`. The binary (from [`main.rs`](src/main.rs)) can be r
 ## Performance
 By "not great" I mean:
 
-- Rust takes around 15 wall-clock seconds to calculate a **set of 12 ingredients**
-- Python takes around 7 wall-clock seconds
+- Rust takes around 17 wall-clock seconds to calculate a **set of 12 ingredients**
+- Python takes around 8 wall-clock seconds on a Core i5
 
 Note that time complexity rises pretty steeply: producing a list of 16 ingredients takes almost ten minutes.
 
-Both versions take around 100k iterations to converge on a solution. While we previously used a random remaining candidate cocktail to test the quality of our current search – which resulted in a lot of "misses" – we now use a new heuristic: the cocktail among the remaining candidates which is the "least unique" in its ingredients, calculated using a minimum amortized cost function. This has almost halved the number of search rounds, and produces an optimal solution for this heuristic:
+Both versions take around 125k iterations to converge on a solution. While we previously used a random remaining candidate cocktail to test the quality of our current search – which resulted in a lot of "misses" – we now use a new heuristic: the cocktail among the remaining candidates which is the "least unique" in its ingredients, calculated using a minimum amortized cost function. This has almost halved the number of search rounds, and produces an optimal solution for this heuristic:
 
-1. Champagne
-2. Cognac
-3. Crème de cassis
-4. Galliano
-5. Gin
-6. Grenadine
-7. Lemon juice
-8. Lime juice
-9. Simple syrup
-10. Triple sec
-11. White crème de menthe
+1. Amaretto
+2. Champagne
+3. Cognac
+4. Crème de cassis
+5. Galliano
+6. Gin
+7. Grenadine
+8. Lemon juice
+9. Lime juice
+10. Simple syrup
+11. Triple sec
 12. White rum
 
 Allowing you to mix:
@@ -45,9 +45,9 @@ Allowing you to mix:
 2. Between the sheets
 3. Daiquiri
 4. French 75
-5. Gimlet
-6. Kir royal
-7. Sidecar
-8. Stinger
+5. French Connection
+6. Gimlet
+7. Kir royal
+8. Sidecar
 9. White lady
 10. Yellow bird
