@@ -1,6 +1,7 @@
-use branchbound::{BranchBound, Ingredient, IngredientSet};
+use branchbound::{BranchBound, Ingredient, IngredientSet, IngredientSeti, Ingredienti};
 use csv::ReaderBuilder;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::BufReader;
 
@@ -27,27 +28,60 @@ fn main() {
         // println!("value {:?}", &value);
         map.insert(key, value);
     });
-    let mut cocktails = map.keys().cloned().collect();
-    let mut bar: FxHashSet<IngredientSet> = FxHashSet::default();
+    let mut res: FxHashSet<IngredientSeti> = FxHashSet::default();
+    // build mapping from cocktail <--> set<i32> and ingredient <--> i32
+    let mut ingredient_lookup = FxHashMap::default();
+    let mut cocktail_lookup = FxHashMap::default();
+    let mut ingredient_lookup_reverse = FxHashMap::default();
+    let mut cocktail_lookup_reverse = FxHashMap::default();
+
+    let mut numeric_set = FxHashSet::default();
+    // populate lookups
+    let mut counter = 0;
+    map.iter().enumerate().for_each(|(i, (ingset, name))| {
+        cocktail_lookup.entry(name).or_insert(i);
+        ingset.iter().for_each(|ingredient| {
+            if ingredient_lookup.get(ingredient).is_none() {
+                ingredient_lookup.insert(ingredient, counter);
+                ingredient_lookup_reverse.insert(counter, ingredient);
+                counter += 1;
+            }
+        });
+        let ingredientset = ingset
+            .iter()
+            .map(|ingredient| *ingredient_lookup.get(ingredient).unwrap())
+            .collect::<BTreeSet<i32>>();
+        // populate mapping for optimisation
+        numeric_set.insert(ingredientset.clone());
+        cocktail_lookup_reverse.insert(ingredientset, name);
+    });
     let mut bb = BranchBound::new(8000000, 12);
-    let best = bb.search(&mut cocktails, &mut bar);
+
+    let best = bb.search(&mut numeric_set, &mut res);
+    // map back from sets of i32 to cocktail names
+    let mut best_names = best
+        .iter()
+        .map(|cocktail| cocktail_lookup_reverse.get(cocktail).unwrap())
+        .collect::<Vec<&&String>>();
+    best_names.sort_unstable();
+
     let fset = best
         .iter()
         .flatten()
         .cloned()
-        .collect::<FxHashSet<Ingredient>>();
-    // let mut v = Vec::from_iter(fset);
-    // v.sort();
-    let mut possible_cocktails = best
+        .collect::<FxHashSet<Ingredienti>>();
+    // map back from i32 to ingredient names
+    let mut fset_names = fset
         .iter()
-        .map(|ings| map.get(ings).unwrap())
-        .collect::<Vec<_>>();
-    possible_cocktails.sort();
+        .map(|entry| ingredient_lookup_reverse.get(entry).unwrap())
+        .collect::<Vec<&&Ingredient>>();
+    fset_names.sort_unstable();
+
     println!("Search rounds {:?}", bb.counter);
-    println!("Ingredient set ({}): {:?}", &fset.len(), &fset);
+    println!("Ingredient set ({}): {:?}", &fset_names.len(), &fset_names);
     println!(
         "Possible cocktails ({}) with this set: {:?}",
-        &possible_cocktails.len(),
-        &possible_cocktails
+        &best_names.len(),
+        &best_names
     );
 }

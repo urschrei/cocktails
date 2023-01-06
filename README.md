@@ -17,10 +17,12 @@ The Rust version doesn't currently have great performance compared to the Python
 Run `cargo build --release`. The binary (from [`main.rs`](src/main.rs)) can be run using e.g. `./target/release/branchbound`
 
 ## Performance
-By "not great" I mean:
+By "not great" I mean that the time to calculate a set of **12** ingredients on a Core i5 is:
 
-- Rust takes around 17 wall-clock seconds to calculate a **set of 12 ingredients**
-- Python takes around 8 wall-clock seconds on a Core i5
+- 5 wall-clock seconds using Rust 1.66 (37.5 % faster)
+- 8 wall-clock seconds using Python 3.9
+
+This isn't a great result for Rust, and getting to this speed increase involved building lookup tables to map the ingredients and cocktail names to unique `i32` values (considerably faster to hash than `String`), in order to work around the fact that Rust's `std` Swisstable-based BTreeSet isn't able to trade hash quality for performance, and doesn't offer or a choice of alternative hashers e.g. FNV or FxHash. Without this optimisation, Rust takes around 18 seconds to complete the search.
 
 Note that time complexity rises pretty steeply: producing a list of 16 ingredients takes almost ten minutes.
 

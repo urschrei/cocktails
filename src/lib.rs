@@ -12,17 +12,20 @@ use std::{cmp::Ordering, collections::BTreeSet};
 pub type Ingredient = String;
 pub type IngredientSet = BTreeSet<Ingredient>;
 
+pub type Ingredienti = i32;
+pub type IngredientSeti = BTreeSet<Ingredienti>;
+
 #[derive(Debug)]
 pub struct BranchBound {
     pub calls: i32,
     pub max_size: usize,
     pub highest_score: usize,
-    pub highest: FxHashSet<IngredientSet>,
-    pub highest_ingredients: BTreeSet<Ingredient>,
+    pub highest: FxHashSet<IngredientSeti>,
+    pub highest_ingredients: BTreeSet<Ingredienti>,
     pub random: ThreadRng,
     pub counter: u32,
-    pub min_cover: FxHashMap<BTreeSet<String>, i32>,
-    pub min_amortized_cost: FxHashMap<BTreeSet<String>, f64>,
+    pub min_cover: FxHashMap<BTreeSet<i32>, i32>,
+    pub min_amortized_cost: FxHashMap<IngredientSeti, f64>,
     pub initial: bool,
 }
 
@@ -54,9 +57,9 @@ impl BranchBound {
 
     pub fn search(
         &mut self,
-        candidates: &mut FxHashSet<IngredientSet>,
-        partial: &mut FxHashSet<IngredientSet>,
-    ) -> FxHashSet<IngredientSet> {
+        candidates: &mut FxHashSet<IngredientSeti>,
+        partial: &mut FxHashSet<IngredientSeti>,
+    ) -> FxHashSet<IngredientSeti> {
         self.counter += 1;
         if self.calls <= 0 {
             println!("{:?}", "Early return!");
@@ -115,7 +118,11 @@ impl BranchBound {
 
         // what cocktails could be added without blowing our ingredient budget?
         // this will be empty on the first iteration
-        let partial_ingredients = partial.iter().flatten().cloned().collect::<IngredientSet>();
+        let partial_ingredients = partial
+            .iter()
+            .flatten()
+            .cloned()
+            .collect::<IngredientSeti>();
 
         // if adding all the associated ingredients of the candidates
         // takes us over the ingredient budget, then not all the
@@ -131,7 +138,7 @@ impl BranchBound {
             .iter()
             .flatten()
             .cloned()
-            .collect::<IngredientSet>();
+            .collect::<IngredientSeti>();
         let mut excess_ingredients =
             (&candidate_ingredients | &partial_ingredients).len() as i32 - self.max_size as i32;
 
@@ -182,9 +189,6 @@ impl BranchBound {
             // we can see how many more cocktails we can fit into the ingredient
             // budget assuming minimum, amortized costs for all cocktails
 
-            // amortized_budget = self.max_size - sum(
-            //     self.min_amortized_cost[cocktail] for cocktail in partial
-            // )
             let amortized_budget = self.max_size as f64
                 - partial
                     .iter()
