@@ -23,6 +23,7 @@ pub struct BranchBound {
     pub counter: u32,
     pub min_cover: FxHashMap<BTreeSet<String>, i32>,
     pub min_amortized_cost: FxHashMap<BTreeSet<String>, f64>,
+    pub initial: bool,
 }
 
 /// This will obviously explode on NaN values
@@ -47,6 +48,7 @@ impl BranchBound {
             counter: 0,
             min_cover: FxHashMap::default(),
             min_amortized_cost: FxHashMap::default(),
+            initial: true,
         }
     }
 
@@ -73,7 +75,8 @@ impl BranchBound {
         }
 
         // first run-through, so populate min_cover, amortized cost and cocktail cardinality
-        if partial.is_empty() {
+        // this SHOULD be a great use of Option, but it's actually such a pain to work with
+        if self.initial {
             let mut cardinality = FxHashMap::default();
             candidates
                 .iter()
@@ -107,6 +110,7 @@ impl BranchBound {
                         .sum::<f64>(),
                 );
             });
+            self.initial = false;
         }
 
         // what cocktails could be added without blowing our ingredient budget?
