@@ -57,7 +57,7 @@ fn main() {
     });
     let mut bb = BranchBound::new(8000000, 12);
 
-    let best = bb.search(&mut numeric_set, &mut res);
+    let best = bb.search(&mut numeric_set, &mut res, &mut None);
     // map back from sets of i32 to cocktail names
     let mut best_names = best
         .iter()

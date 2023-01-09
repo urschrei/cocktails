@@ -59,34 +59,36 @@ impl BranchBound {
         &mut self,
         candidates: &mut FxHashSet<IngredientSeti>,
         partial: &mut FxHashSet<IngredientSeti>,
+        forbidden: &mut Option<FxHashSet<IngredientSeti>>,
     ) -> FxHashSet<IngredientSeti> {
-        self.counter += 1;
-        if self.calls <= 0 {
-            println!("{:?}", "Early return!");
-            return self.highest.clone();
-        }
-        self.calls -= 1;
-        let score = partial.len();
-        if score > self.highest_score {
-            self.highest = partial.clone();
-            self.highest_ingredients = self
-                .highest_ingredients
-                .union(&self.highest.iter().flatten().cloned().collect())
-                .cloned()
-                .collect();
-            self.highest_score = score;
-        }
-
         // first run-through, so populate min_cover, amortized cost and cocktail cardinality
         // this SHOULD be a great use of Option, but it's actually such a pain to work with
         if self.initial {
+            *forbidden = Some(FxHashSet::default());
             let mut cardinality = FxHashMap::default();
             candidates
                 .iter()
                 .flatten()
                 .for_each(|ingredient| *cardinality.entry(ingredient).or_insert(0) += 1);
 
+            // we can calculate the minimum amortized cost for each cocktail:
+            // if we were to have enough
+            // ingredients to make all the cocktails, how much should
+            // we pay, in ingredient-cost, for each cocktail. For
+            // example, if a cocktail has a unique ingredient, and two
+            // other ingredients shared by one other cocktail, then the
+            // amortized cost would be 1/1 + 1/2 + 1/2 = 2
+            //
+            // The minimum amortized cost is a lower bound on how much
+            // we will ever pay in ingredient cost for a cocktail.
             candidates.iter().for_each(|cocktail| {
+                self.min_amortized_cost.insert(
+                    cocktail.clone(),
+                    cocktail
+                        .iter()
+                        .map(|ingredient| 1f64 / *cardinality.get(ingredient).unwrap() as f64)
+                        .sum::<f64>(),
+                );
                 self.min_cover.insert(
                     cocktail.clone(),
                     *cocktail
@@ -95,27 +97,22 @@ impl BranchBound {
                         .min()
                         .unwrap(),
                 );
-                // we can calculate the minimum amortized cost for each cocktail:
-                // if we were to have enough
-                // ingredients to make all the cocktails, how much should
-                // we pay, in ingredient-cost, for each cocktail. For
-                // example, if a cocktail has a unique ingredient, and two
-                // other ingredients shared by one other cocktail, then the
-                // amortized cost would be 1/1 + 1/2 + 1/2 = 2
-                //
-                // The minimum amortized cost is a lower bound on how much
-                // we will ever pay in ingredient cost for a cocktail.
-                self.min_amortized_cost.insert(
-                    cocktail.clone(),
-                    cocktail
-                        .iter()
-                        .map(|ingredient| 1f64 / *cardinality.get(ingredient).unwrap() as f64)
-                        .sum::<f64>(),
-                );
             });
             self.initial = false;
         }
+        // begin
+        if self.calls <= 0 {
+            println!("{:?}", "Early return!");
+            return self.highest.clone();
+        }
+        self.calls -= 1;
+        self.counter += 1;
+        let score = partial.len();
 
+        if score > self.highest_score {
+            self.highest = partial.clone();
+            self.highest_score = score;
+        }
         // what cocktails could be added without blowing our ingredient budget?
         // this will be empty on the first iteration
         let partial_ingredients = partial
@@ -123,102 +120,8 @@ impl BranchBound {
             .flatten()
             .cloned()
             .collect::<IngredientSeti>();
-
-        // if adding all the associated ingredients of the candidates
-        // takes us over the ingredient budget, then not all the
-        // candidates can feasibly be added to our partial
-        // solution. So, if there will be excess ingredients we'll
-        // reduce the upper bound of how many cocktails we might be
-        // able to cover (possible_increment)
-        candidates.retain(|cocktail| (cocktail | &partial_ingredients).len() <= self.max_size);
-
-        let mut upper_increment = candidates.len();
-
-        let candidate_ingredients = candidates
-            .iter()
-            .flatten()
-            .cloned()
-            .collect::<IngredientSeti>();
-        let mut excess_ingredients =
-            (&candidate_ingredients | &partial_ingredients).len() as i32 - self.max_size as i32;
-
-        if excess_ingredients > 0 {
-            // We will calculate three upper bounds on the possible cocktail
-            // increment, and then we'll choose the tightest bound.
-
-            // Firstly
-            // There are many cocktails that have a unique ingredient.
-            //
-            // Each cocktail with a unique ingredient will cost at least
-            // one ingredient from our ingredient budget, and the total
-            // possible increase due to these unique cocktails is bounded
-            // by the ingredient budget
-            let n_unique_cocktails = candidates
-                .iter()
-                .filter(|cocktail| self.min_cover.get(cocktail).unwrap() == &1)
-                .count();
-            let ingredient_budget = self.max_size - partial_ingredients.len();
-            let upper_increment_a =
-                candidates.len() - n_unique_cocktails + n_unique_cocktails.min(ingredient_budget);
-
-            // Secondly:
-            // The best case is that excess ingredients are concentrated in
-            // some cocktails. If we're in this best case, removing
-            // the cocktails that add the most new ingredients
-            // brings us back under the ingredient budget
-            //
-            // note that we're just updating the bound; it could actually
-            // be the case that we want to add one of these cocktails that add
-            // a lot of ingredients
-            let mut upper_increment_b = candidates.len();
-            let mut ingredient_increases = candidates
-                .iter()
-                .map(|cocktail| (cocktail - &partial_ingredients).len() as i32)
-                .collect::<Vec<i32>>();
-            ingredient_increases.sort_by(|a, b| b.cmp(a));
-            for increase in ingredient_increases {
-                upper_increment_b -= 1;
-                excess_ingredients -= increase;
-                if excess_ingredients <= 0 {
-                    break;
-                }
-            }
-
-            // Thirdly:
-            //
-            // we can see how many more cocktails we can fit into the ingredient
-            // budget assuming minimum, amortized costs for all cocktails
-
-            let amortized_budget = self.max_size as f64
-                - partial
-                    .iter()
-                    .map(|cocktail| self.min_amortized_cost.get(cocktail).unwrap())
-                    .sum::<f64>();
-            let mut candidate_amortized_costs = candidates
-                .iter()
-                .map(|cocktail| *self.min_amortized_cost.get(cocktail).unwrap())
-                .collect::<Vec<f64>>();
-            candidate_amortized_costs.sort_by(cmp_f64);
-
-            let mut total_cost = 0.0;
-            let mut upper_increment_c = 0;
-            for cost in candidate_amortized_costs {
-                total_cost += cost;
-                if total_cost > amortized_budget {
-                    break;
-                }
-                upper_increment_c += 1
-            }
-
-            upper_increment = *[upper_increment_a, upper_increment_b, upper_increment_c]
-                .iter()
-                .min()
-                .unwrap();
-        }
-
-        let window = self.highest_score - score;
-
-        if !candidates.is_empty() && upper_increment > window {
+        let keep_exploring = self.keep_exploring(candidates, partial, &partial_ingredients);
+        if keep_exploring {
             // new best heuristic: pick the candidate cocktail
             // which is the "least unique" in its ingredient list
             let best = candidates
@@ -231,7 +134,6 @@ impl BranchBound {
                 })
                 .unwrap()
                 .clone();
-
             let new_partial_ingredients = &partial_ingredients | &best;
             let covered_candidates = candidates
                 .iter()
@@ -241,21 +143,134 @@ impl BranchBound {
                         || cocktail == &new_partial_ingredients
                 })
                 .collect();
-
+            let mut permitted_candidates = FxHashSet::default();
+            (&*candidates - &covered_candidates)
+                .iter()
+                .for_each(|cocktail| {
+                    let extended_ingredients = cocktail | &new_partial_ingredients;
+                    if extended_ingredients.len() <= self.max_size {
+                        // when we branch, we need to not only remove a cocktail
+                        // from the candidate set, but ensure that it's impossible
+                        // for the final ingredient list to be a superset of the cocktail.
+                        // otherwise, we could undercount the score of the branch.
+                        // this is O(N^2), alas.
+                        let forbidden_cover =
+                            forbidden
+                                .as_mut()
+                                .unwrap()
+                                .iter()
+                                .any(|forbidden_cocktail| {
+                                    forbidden_cocktail.is_subset(&extended_ingredients)
+                                        || forbidden_cocktail == &extended_ingredients
+                                });
+                        if !forbidden_cover {
+                            permitted_candidates.insert(cocktail.clone());
+                        }
+                    }
+                });
             self.search(
-                &mut (&*candidates - &covered_candidates),
+                &mut permitted_candidates,
                 &mut (&*partial | &covered_candidates),
+                forbidden,
             );
-
-            // if a cocktail is not part of the optimum set,
-            // the optimum set cannot have the cocktail as a subset
-            candidates.remove(&best);
-            candidates.retain(|cocktail| {
+            let mut remaining = candidates.clone();
+            remaining.remove(&best);
+            remaining.retain(|cocktail| {
                 let test = cocktail | &partial_ingredients;
-                !best.is_subset(&test) && best != test
+                !best.is_subset(&test) || best != test
             });
-            self.search(candidates, partial);
+
+            let mut new_forbidden = forbidden.as_ref().unwrap().clone();
+            new_forbidden.insert(best);
+
+            self.search(&mut remaining, partial, &mut Some(new_forbidden));
         }
         self.highest.clone()
+    }
+
+    fn keep_exploring(
+        &self,
+        candidates: &mut FxHashSet<IngredientSeti>,
+        partial: &mut FxHashSet<IngredientSeti>,
+        partial_ingredients: &IngredientSeti,
+    ) -> bool {
+        let threshold = (self.highest_score - partial.len()) as i32;
+        let bound_functions = [
+            Self::total_bound,
+            Self::singleton_bound,
+            Self::concentration_bound,
+        ];
+        for func in bound_functions {
+            let bound = func(self, candidates, partial, partial_ingredients);
+            if bound <= threshold {
+                return false;
+            };
+        }
+        true
+    }
+
+    fn total_bound(
+        &self,
+        candidates: &FxHashSet<IngredientSeti>,
+        _partial: &FxHashSet<IngredientSeti>,
+        _partial_ingredients: &IngredientSeti,
+    ) -> i32 {
+        candidates.len() as i32
+    }
+
+    /// There are many cocktails that have an unique ingredient.
+    ///
+    /// Each cocktail with a unique ingredient will cost at least
+    /// one ingredient from our ingredient budget, and the total
+    /// possible increase due to these unique cocktails is bounded
+    /// by the ingredient budget
+    fn singleton_bound(
+        &self,
+        candidates: &FxHashSet<IngredientSeti>,
+        _partial: &FxHashSet<IngredientSeti>,
+        partial_ingredients: &IngredientSeti,
+    ) -> i32 {
+        let n_unique_cocktails = candidates
+            .iter()
+            .filter(|cocktail| self.min_cover.get(cocktail).unwrap() == &1)
+            .count();
+        let ingredient_budget = self.max_size - partial_ingredients.len();
+        candidates.len() as i32 - n_unique_cocktails as i32
+            + (n_unique_cocktails.min(ingredient_budget) as i32)
+    }
+    /// best case is that excess ingredients are concentrated in
+    /// some cocktails. if we are in this best case, then if we
+    /// remove the cocktails that add the most new ingredients
+    /// we'll be back under the ingredient budget
+    /// note that we are just updating the bound. it could actually
+    /// be that we want to add one of these cocktails that add
+    /// a lot of ingredients
+    fn concentration_bound(
+        &self,
+        candidates: &FxHashSet<IngredientSeti>,
+        _partial: &FxHashSet<IngredientSeti>,
+        partial_ingredients: &IngredientSeti,
+    ) -> i32 {
+        let candidate_ingredients = candidates
+            .iter()
+            .flatten()
+            .cloned()
+            .collect::<IngredientSeti>();
+        let mut excess_ingredients =
+            (&candidate_ingredients | partial_ingredients).len() as i32 - self.max_size as i32;
+        let mut ingredient_increases = candidates
+            .iter()
+            .map(|cocktail| (cocktail - partial_ingredients).len() as i32)
+            .collect::<Vec<i32>>();
+        ingredient_increases.sort_by(|a, b| b.cmp(a));
+        let mut upper_increment = candidates.len();
+        for ingredient_increase in ingredient_increases {
+            if excess_ingredients <= 0 {
+                break;
+            }
+            upper_increment -= 1;
+            excess_ingredients -= ingredient_increase;
+        }
+        upper_increment as i32
     }
 }

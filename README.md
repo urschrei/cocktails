@@ -18,14 +18,14 @@ Run `cargo build --release`. The binary (from [`main.rs`](src/main.rs)) can be r
 ## Performance
 By "not great" I mean that the time to calculate a set of **12** ingredients on a Core i5 is:
 
-- 5 wall-clock seconds using Rust 1.66 (37.5 % faster)
-- 8 wall-clock seconds using Python 3.9
+- 4.2 wall-clock seconds using Rust 1.66 (around 40 % faster)
+- 6 wall-clock seconds using Python 3.9
 
 This isn't a great result for Rust, and getting to this speed increase involved building lookup tables to map the ingredients and cocktail names to unique `i32` values (considerably faster to hash than `String`), in order to work around the relatively slow `std` Swisstable-based `BTreeSet` hash algorithm.
 
 Note that time complexity rises pretty steeply: producing a list of 16 ingredients takes almost ten minutes.
 
-Both versions take around 125k iterations to converge on a solution. While we previously used a random remaining candidate cocktail to test the quality of our current search – which resulted in a lot of "misses" – [we now use a new heuristic](https://github.com/fgregg/cocktails): the cocktail among the remaining candidates which is the "least unique" in its ingredients, calculated using a minimum amortized cost function. This has almost halved the number of search rounds, and produces an optimal solution for this heuristic:
+Both versions take around 10k iterations to converge on a 12-ingredient solution. While we previously used a random remaining candidate cocktail to test the quality of our current search – which resulted in a lot of "misses" – [we now use a new heuristic](https://github.com/fgregg/cocktails): the cocktail among the remaining candidates which is the "least unique" in its ingredients, calculated using a minimum amortized cost function. This has almost halved the number of search rounds, and produces an optimal solution for this heuristic:
 
 1. Amaretto
 2. Champagne
