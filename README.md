@@ -25,7 +25,7 @@ This isn't a great result for Rust, and getting to this speed increase involved 
 
 Note that time complexity rises pretty steeply: producing a list of 16 ingredients takes almost ten minutes.
 
-Both versions take around 10k iterations to converge on a 12-ingredient solution. While we previously used a random remaining candidate cocktail to test the quality of our current search – which resulted in a lot of "misses" – [we now use a new heuristic](https://github.com/fgregg/cocktails): the cocktail among the remaining candidates which is the "least unique" in its ingredients, calculated using a minimum amortized cost function. This has almost halved the number of search rounds, and produces an optimal solution for this heuristic:
+Both versions take around 100k iterations to converge on a 12-ingredient solution. While we previously used a random remaining candidate cocktail to test the quality of our current search – which resulted in a lot of "misses" – [we now use a new heuristic](https://github.com/fgregg/cocktails): the cocktail among the remaining candidates which is the "least unique" in its ingredients, calculated using a minimum amortized cost function. This has almost halved the number of search rounds, and produces an optimal solution for this heuristic:
 
 1. Amaretto
 2. Champagne
