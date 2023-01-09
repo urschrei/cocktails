@@ -113,6 +113,7 @@ impl BranchBound {
             self.highest = partial.clone();
             self.highest_score = score;
         }
+
         // what cocktails could be added without blowing our ingredient budget?
         // this will be empty on the first iteration
         let partial_ingredients = partial
@@ -121,6 +122,7 @@ impl BranchBound {
             .cloned()
             .collect::<IngredientSeti>();
         let keep_exploring = self.keep_exploring(candidates, partial, &partial_ingredients);
+
         if keep_exploring {
             // new best heuristic: pick the candidate cocktail
             // which is the "least unique" in its ingredient list
@@ -168,23 +170,26 @@ impl BranchBound {
                         }
                     }
                 });
+
             self.search(
                 &mut permitted_candidates,
                 &mut (&*partial | &covered_candidates),
                 forbidden,
             );
+
             let mut remaining = candidates.clone();
             remaining.remove(&best);
             remaining.retain(|cocktail| {
                 let test = cocktail | &partial_ingredients;
                 !best.is_subset(&test) || best != test
             });
-
             let mut new_forbidden = forbidden.as_ref().unwrap().clone();
             new_forbidden.insert(best);
 
             self.search(&mut remaining, partial, &mut Some(new_forbidden));
         }
+        // search() called from inner loop instances will return to the callee at this point
+        // once those are exhausted, the final set will return to the caller
         self.highest.clone()
     }
 
