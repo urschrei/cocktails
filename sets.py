@@ -73,7 +73,6 @@ class BranchBound(object):
 
         partial_ingredients = set().union(*partial)
         keep_exploring = self.keep_exploring(candidates, partial, partial_ingredients)
-        # keep exploring is False in round 18 so we skip the next if branch
         if candidates and keep_exploring:
             # the best heuristic i've found is to pick the candidates
             # with the smallest, minimum amortized cost
