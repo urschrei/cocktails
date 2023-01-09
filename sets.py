@@ -1,4 +1,5 @@
 # https://github.com/fgregg/cocktails/blob/645809cf8f67066713436255b418914e98d85a48/cocktails.py
+# copyright Forest Gregg 2023
 import ipdb
 from typing import AbstractSet, Set, FrozenSet, Optional
 
