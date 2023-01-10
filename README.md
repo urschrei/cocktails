@@ -23,7 +23,7 @@ By "not great" I mean that the time to calculate a set of **12** ingredients on 
 
 This isn't a great result for Rust, and getting to this speed increase involved building lookup tables to map the ingredients and cocktail names to unique `i32` values (considerably faster to hash than `String`), in order to work around the relatively slow `std` Swisstable-based `BTreeSet` hash algorithm.
 
-Note that time complexity rises pretty steeply: producing a list of 16 ingredients takes almost ten minutes.
+Note that time complexity rises pretty steeply: producing a list of 16 ingredients takes around 95 seconds.
 
 Both versions take around 100k iterations to converge on a 12-ingredient solution. While we previously used a random remaining candidate cocktail to test the quality of our current search – which resulted in a lot of "misses" – [we now use a new heuristic](https://github.com/fgregg/cocktails): the cocktail among the remaining candidates which is the "least unique" in its ingredients, calculated using a minimum amortized cost function. This has almost halved the number of search rounds, and produces an optimal solution for this heuristic:
 
