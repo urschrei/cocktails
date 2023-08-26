@@ -1,6 +1,6 @@
 # https://github.com/fgregg/cocktails/blob/645809cf8f67066713436255b418914e98d85a48/cocktails.py
 # copyright Forest Gregg 2023
-import ipdb
+# import ipdb
 from typing import AbstractSet, Set, FrozenSet, Optional
 
 Cocktail = FrozenSet[str]
@@ -66,7 +66,6 @@ class BranchBound(object):
         score = len(partial)
 
         if score > self.highest_score:
-
             self.highest = partial
             self.highest_score = score
             # print(sorted(cocktails[k] for k in self.highest))
@@ -89,7 +88,6 @@ class BranchBound(object):
             for cocktail in candidates - covered_candidates:
                 extended_ingredients = cocktail | new_partial_ingredients
                 if len(extended_ingredients) <= self.max_size:
-
                     # when we branch, we need to not only remove
                     # a cocktail from the candidate set, but make
                     # it impossible that final ingredient list could
