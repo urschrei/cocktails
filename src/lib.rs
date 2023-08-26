@@ -55,6 +55,7 @@ impl BranchBound {
         }
     }
 
+    #[inline(always)]
     pub fn search(
         &mut self,
         candidates: &mut FxHashSet<IngredientSeti>,
@@ -267,7 +268,7 @@ impl BranchBound {
             .iter()
             .map(|cocktail| (cocktail - partial_ingredients).len() as i32)
             .collect::<Vec<i32>>();
-        ingredient_increases.sort_by(|a, b| b.cmp(a));
+        ingredient_increases.sort_unstable_by(|a, b| b.cmp(a));
         let mut upper_increment = candidates.len();
         for ingredient_increase in ingredient_increases {
             if excess_ingredients <= 0 {
