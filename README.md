@@ -16,10 +16,10 @@ The Rust version doesn't currently have great performance compared to the Python
 Run `cargo build --release`. The binary (from [`main.rs`](src/main.rs)) can be run using e.g. `./target/release/branchbound`
 
 ## Performance
-By "not great" I mean that the time to calculate a set of **12** ingredients on a Core i5 is:
+By "not great" I mean that the time to calculate a set of **12** ingredients on an M2 is:
 
-- 4.2 wall-clock seconds using Rust 1.66 (around 40 % faster)
-- 6 wall-clock seconds using Python 3.9
+- 1.95 wall-clock seconds using Rust 1.72 (around 20 % faster)
+- 2.37 wall-clock seconds using Python 3.11
 
 This isn't a great result for Rust, and getting to this speed increase involved building lookup tables to map the ingredients and cocktail names to unique `i32` values (considerably faster to hash than `String`), in order to work around the relatively slow `std` Swisstable-based `BTreeSet` hash algorithm.
 
