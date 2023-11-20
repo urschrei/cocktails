@@ -140,11 +140,11 @@ impl BranchBound {
             let new_partial_ingredients = &partial_ingredients | &best;
             let covered_candidates = candidates
                 .iter()
-                .cloned()
-                .filter(|cocktail| {
+                .filter(|&cocktail| {
                     cocktail.is_subset(&new_partial_ingredients)
                         || cocktail == &new_partial_ingredients
                 })
+                .cloned()
                 .collect();
             let mut permitted_candidates = FxHashSet::default();
             (&*candidates - &covered_candidates)
