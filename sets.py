@@ -1,6 +1,5 @@
-# https://github.com/fgregg/cocktails/blob/645809cf8f67066713436255b418914e98d85a48/cocktails.py
-# copyright Forest Gregg 2023
-# import ipdb
+# fgregg/cocktails@645809c
+
 from typing import AbstractSet, Set, FrozenSet, Optional
 
 Cocktail = FrozenSet[str]
@@ -18,7 +17,6 @@ class BranchBound(object):
 
         self.min_amortized_cost: dict[Cocktail, float] = {}
         self.min_cover: dict[Cocktail, int] = {}
-        self.rounds: int = 0
 
     def search(
         self,
@@ -51,7 +49,7 @@ class BranchBound(object):
             # we will ever pay in ingredient cost for a cocktail.
             for cocktail in candidates:
                 self.min_amortized_cost[cocktail] = sum(
-                    1.0 / cardinality[ingredient] for ingredient in cocktail
+                    1 / cardinality[ingredient] for ingredient in cocktail
                 )
                 self.min_cover[cocktail] = min(
                     cardinality[ingredient] for ingredient in cocktail
@@ -62,17 +60,18 @@ class BranchBound(object):
             return self.highest
 
         self.calls -= 1
-        self.rounds += 1
+
         score = len(partial)
 
         if score > self.highest_score:
             self.highest = partial
             self.highest_score = score
-            # print(sorted(cocktails[k] for k in self.highest))
-            # print(self.highest_score)
+            print(sorted(cocktails[k] for k in self.highest))
+            print(self.highest_score)
 
         partial_ingredients = set().union(*partial)
         keep_exploring = self.keep_exploring(candidates, partial, partial_ingredients)
+
         if candidates and keep_exploring:
             # the best heuristic i've found is to pick the candidates
             # with the smallest, minimum amortized cost
@@ -84,6 +83,7 @@ class BranchBound(object):
                 for cocktail in candidates
                 if cocktail <= new_partial_ingredients
             }
+
             permitted_candidates = set()
             for cocktail in candidates - covered_candidates:
                 extended_ingredients = cocktail | new_partial_ingredients
@@ -109,7 +109,6 @@ class BranchBound(object):
                 for cocktail in candidates - set([best])
                 if not (best <= (cocktail | partial_ingredients))
             }
-
             forbidden = forbidden | set([best])
 
             self.search(remaining, partial, forbidden)
@@ -221,9 +220,8 @@ if __name__ == "__main__":
             name, *ingredients = row
             cocktails[frozenset(ingredients)] = name
 
-    bb = BranchBound(8000000, 12)
+    bb = BranchBound(8000000, 30)
     best = bb.search(cocktails.keys())
 
-    print(bb.rounds)
     print(sorted(set().union(*best)))
     print(sorted(cocktails[k] for k in best))
