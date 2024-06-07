@@ -30,7 +30,7 @@ pub struct BranchBound {
 }
 
 /// This will obviously explode on NaN values
-fn cmp_f64(a: &f64, b: &f64) -> Ordering {
+fn cmp_f64(a: f64, b: f64) -> Ordering {
     if a < b {
         return Ordering::Less;
     } else if a > b {
@@ -40,6 +40,7 @@ fn cmp_f64(a: &f64, b: &f64) -> Ordering {
 }
 
 impl BranchBound {
+    #[must_use]
     pub fn new(max_calls: i32, max_size: usize) -> BranchBound {
         BranchBound {
             calls: max_calls,
@@ -82,12 +83,12 @@ impl BranchBound {
             //
             // The minimum amortized cost is a lower bound on how much
             // we will ever pay in ingredient cost for a cocktail.
-            candidates.iter().for_each(|cocktail| {
+            for cocktail in candidates.iter() {
                 self.min_amortized_cost.insert(
                     cocktail.clone(),
                     cocktail
                         .iter()
-                        .map(|ingredient| 1f64 / *cardinality.get(ingredient).unwrap() as f64)
+                        .map(|ingredient| 1f64 / f64::from(*cardinality.get(ingredient).unwrap()))
                         .sum::<f64>(),
                 );
                 self.min_cover.insert(
@@ -98,7 +99,7 @@ impl BranchBound {
                         .min()
                         .unwrap(),
                 );
-            });
+            }
             self.initial = false;
         }
         // begin
@@ -111,7 +112,7 @@ impl BranchBound {
         let score = partial.len();
 
         if score > self.highest_score {
-            self.highest = partial.clone();
+            self.highest.clone_from(partial);
             self.highest_score = score;
         }
 
@@ -120,7 +121,7 @@ impl BranchBound {
         let partial_ingredients = partial
             .iter()
             .flatten()
-            .cloned()
+            .copied()
             .collect::<IngredientSeti>();
         let keep_exploring = self.keep_exploring(candidates, partial, &partial_ingredients);
 
@@ -131,8 +132,8 @@ impl BranchBound {
                 .iter()
                 .min_by(|a, b| {
                     cmp_f64(
-                        self.min_amortized_cost.get(a).unwrap(),
-                        self.min_amortized_cost.get(b).unwrap(),
+                        *self.min_amortized_cost.get(a).unwrap(),
+                        *self.min_amortized_cost.get(b).unwrap(),
                     )
                 })
                 .unwrap()
@@ -260,7 +261,7 @@ impl BranchBound {
         let candidate_ingredients = candidates
             .iter()
             .flatten()
-            .cloned()
+            .copied()
             .collect::<IngredientSeti>();
         let mut excess_ingredients =
             (&candidate_ingredients | partial_ingredients).len() as i32 - self.max_size as i32;

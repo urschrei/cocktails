@@ -21,7 +21,7 @@ fn main() {
         let key = r
             .iter()
             .skip(1)
-            .map(|s| s.to_owned())
+            .map(std::borrow::ToOwned::to_owned)
             .collect::<IngredientSet>();
         let value = r.iter().next().unwrap().to_owned();
         // println!("key {:?}", &key);
@@ -40,13 +40,13 @@ fn main() {
     let mut counter = 0;
     map.iter().enumerate().for_each(|(i, (ingset, name))| {
         cocktail_lookup.entry(name).or_insert(i);
-        ingset.iter().for_each(|ingredient| {
+        for ingredient in ingset {
             if ingredient_lookup.get(ingredient).is_none() {
                 ingredient_lookup.insert(ingredient, counter);
                 ingredient_lookup_reverse.insert(counter, ingredient);
                 counter += 1;
             }
-        });
+        }
         let ingredientset = ingset
             .iter()
             .map(|ingredient| *ingredient_lookup.get(ingredient).unwrap())
@@ -55,7 +55,7 @@ fn main() {
         numeric_set.insert(ingredientset.clone());
         cocktail_lookup_reverse.insert(ingredientset, name);
     });
-    let mut bb = BranchBound::new(8000000, 12);
+    let mut bb = BranchBound::new(8_000_000, 12);
 
     let best = bb.search(&mut numeric_set, &mut res, &mut None);
     // map back from sets of i32 to cocktail names
@@ -68,7 +68,7 @@ fn main() {
     let fset = best
         .iter()
         .flatten()
-        .cloned()
+        .copied()
         .collect::<FxHashSet<Ingredienti>>();
     // map back from i32 to ingredient names
     let mut fset_names = fset
