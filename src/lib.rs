@@ -88,6 +88,7 @@ impl BranchBound {
         }
     }
 
+
     #[inline(always)]
     pub fn search(
         &mut self,

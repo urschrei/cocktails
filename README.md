@@ -14,15 +14,65 @@ This is – in an abstract sense – a classic combinatorial optimisation proble
 The Rust version has been optimized with a custom BitSet implementation using u128 for fast bitwise operations, delivering significant performance improvements over the original implementation.
 
 ## Running the code
-Run `cargo build --release`. The binary (from [`main.rs`](src/main.rs)) can be run using e.g. `./target/release/branchbound`
+
+Build the optimized version:
+```bash
+cargo build --release
+```
+
+Run with default settings (12 ingredients):
+```bash
+./target/release/branchbound
+```
+
+### Command-Line Options
+
+```bash
+Cocktail Ingredients Optimiser - Find optimal ingredient combinations
+
+Usage: branchbound [OPTIONS]
+
+Options:
+  -i, --ingredients <INGREDIENTS>  Number of ingredients to select (2-109) [default: 12]
+  -m, --max-calls <MAX_CALLS>      Maximum search iterations [default: 8000000]
+  -f, --format <FORMAT>            Output format: table, json, or simple [default: table]
+  -h, --help                       Print help
+  -V, --version                    Print version
+```
+
+### Usage Examples
+
+Find optimal ingredients for different counts:
+```bash
+./target/release/branchbound --ingredients 8   # Fast: ~6 ms
+./target/release/branchbound --ingredients 12  # Medium: ~150 ms
+./target/release/branchbound --ingredients 16  # Slower: ~3 s
+```
+
+Different output formats:
+```bash
+./target/release/branchbound --format table    # Pretty table (default)
+./target/release/branchbound --format simple   # Minimal output
+./target/release/branchbound --format json     # JSON for programmatic use
+```
+
 
 ## Performance
-The optimized Rust implementation calculates a set of **12** ingredients on an M2 in:
 
-- **147.1 ms** using the optimized Rust implementation with custom BitSet
-- 2.37 seconds using Python 3.11
+The optimized Rust implementation scaling characteristics:
 
-This represents a **16.1x performance improvement** over the original Python implementation. The optimization involved:
+| Ingredients | Time | Iterations | Cocktails Found |
+|-------------|------|------------|----------------|
+| 8           | ~6ms | ~3,500     | 6 cocktails    |
+| 12          | ~150ms | ~109,000   | 10 cocktails   |
+| 16          | ~3s  | ~2,000,000 | 14 cocktails   |
+
+Compared to the original Python implementation (12 ingredients):
+- **Rust (optimized)**: 147ms 
+- **Python**: 2.37 seconds
+- **Speedup**: **16.1x faster**
+
+The optimization involved:
 1. Replacing `BTreeSet` operations with a custom `BitSet` using `u128` storage
 2. Using fast bitwise operations for set union, intersection, and difference
 3. Optimizing data structures to reduce allocations in hot paths
