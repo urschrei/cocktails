@@ -1,7 +1,6 @@
-use branchbound::{BranchBound, Ingredient, IngredientSet, IngredientSeti, Ingredienti};
+use branchbound::{BitSet, BranchBound, Ingredient, IngredientSet, IngredientSeti, Ingredienti};
 use csv::ReaderBuilder;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::BufReader;
 
@@ -41,18 +40,19 @@ fn main() {
     map.iter().enumerate().for_each(|(i, (ingset, name))| {
         cocktail_lookup.entry(name).or_insert(i);
         for ingredient in ingset {
-            if ingredient_lookup.get(ingredient).is_none() {
+            if !ingredient_lookup.contains_key(ingredient) {
                 ingredient_lookup.insert(ingredient, counter);
                 ingredient_lookup_reverse.insert(counter, ingredient);
                 counter += 1;
             }
         }
-        let ingredientset = ingset
-            .iter()
-            .map(|ingredient| *ingredient_lookup.get(ingredient).unwrap())
-            .collect::<BTreeSet<i32>>();
+        let ingredientset = BitSet::bitset_from_iter(
+            ingset
+                .iter()
+                .map(|ingredient| *ingredient_lookup.get(ingredient).unwrap()),
+        );
         // populate mapping for optimisation
-        numeric_set.insert(ingredientset.clone());
+        numeric_set.insert(ingredientset);
         cocktail_lookup_reverse.insert(ingredientset, name);
     });
     let mut bb = BranchBound::new(8_000_000, 12);
@@ -65,11 +65,12 @@ fn main() {
         .collect::<Vec<&&String>>();
     best_names.sort_unstable();
 
-    let fset = best
-        .iter()
-        .flatten()
-        .copied()
-        .collect::<FxHashSet<Ingredienti>>();
+    let mut fset = FxHashSet::default();
+    for cocktail in best.iter() {
+        for ingredient in cocktail.iter() {
+            fset.insert(ingredient as Ingredienti);
+        }
+    }
     // map back from i32 to ingredient names
     let mut fset_names = fset
         .iter()

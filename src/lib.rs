@@ -9,11 +9,14 @@ use rand::rngs::ThreadRng;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::{cmp::Ordering, collections::BTreeSet};
 
+mod bitset;
+pub use bitset::BitSet;
+
 pub type Ingredient = String;
 pub type IngredientSet = BTreeSet<Ingredient>;
 
 pub type Ingredienti = i32;
-pub type IngredientSeti = BTreeSet<Ingredienti>;
+pub type IngredientSeti = BitSet;
 
 #[derive(Debug)]
 pub struct BranchBound {
@@ -21,10 +24,10 @@ pub struct BranchBound {
     pub max_size: usize,
     pub highest_score: usize,
     pub highest: FxHashSet<IngredientSeti>,
-    pub highest_ingredients: BTreeSet<Ingredienti>,
+    pub highest_ingredients: BitSet,
     pub random: ThreadRng,
     pub counter: u32,
-    pub min_cover: FxHashMap<BTreeSet<i32>, i32>,
+    pub min_cover: FxHashMap<BitSet, i32>,
     pub min_amortized_cost: FxHashMap<IngredientSeti, f64>,
     pub initial: bool,
 }
@@ -47,7 +50,7 @@ impl BranchBound {
             max_size,
             highest_score: 0usize,
             highest: FxHashSet::default(),
-            highest_ingredients: BTreeSet::new(),
+            highest_ingredients: BitSet::new(),
             random: rand::thread_rng(),
             counter: 0,
             min_cover: FxHashMap::default(),
@@ -68,10 +71,11 @@ impl BranchBound {
         if self.initial {
             *forbidden = Some(FxHashSet::default());
             let mut cardinality = FxHashMap::default();
-            candidates
-                .iter()
-                .flatten()
-                .for_each(|ingredient| *cardinality.entry(ingredient).or_insert(0) += 1);
+            for cocktail in candidates.iter() {
+                for ingredient in cocktail.iter() {
+                    *cardinality.entry(ingredient as i32).or_insert(0) += 1;
+                }
+            }
 
             // we can calculate the minimum amortized cost for each cocktail:
             // if we were to have enough
@@ -85,17 +89,19 @@ impl BranchBound {
             // we will ever pay in ingredient cost for a cocktail.
             for cocktail in candidates.iter() {
                 self.min_amortized_cost.insert(
-                    cocktail.clone(),
+                    *cocktail,
                     cocktail
                         .iter()
-                        .map(|ingredient| 1f64 / f64::from(*cardinality.get(ingredient).unwrap()))
+                        .map(|ingredient| {
+                            1f64 / f64::from(*cardinality.get(&(ingredient as i32)).unwrap())
+                        })
                         .sum::<f64>(),
                 );
                 self.min_cover.insert(
-                    cocktail.clone(),
-                    *cocktail
+                    *cocktail,
+                    cocktail
                         .iter()
-                        .map(|ingredient| cardinality.get(ingredient).unwrap())
+                        .map(|ingredient| *cardinality.get(&(ingredient as i32)).unwrap())
                         .min()
                         .unwrap(),
                 );
@@ -118,11 +124,10 @@ impl BranchBound {
 
         // what cocktails could be added without blowing our ingredient budget?
         // this will be empty on the first iteration
-        let partial_ingredients = partial
-            .iter()
-            .flatten()
-            .copied()
-            .collect::<IngredientSeti>();
+        let mut partial_ingredients = BitSet::new();
+        for cocktail in partial.iter() {
+            partial_ingredients = partial_ingredients | cocktail;
+        }
         let keep_exploring = self.keep_exploring(candidates, partial, &partial_ingredients);
 
         if keep_exploring {
@@ -137,21 +142,18 @@ impl BranchBound {
                     )
                 })
                 .unwrap()
-                .clone();
-            let new_partial_ingredients = &partial_ingredients | &best;
+                .to_owned();
+            let new_partial_ingredients = partial_ingredients | best;
             let covered_candidates = candidates
                 .iter()
-                .filter(|&cocktail| {
-                    cocktail.is_subset(&new_partial_ingredients)
-                        || cocktail == &new_partial_ingredients
-                })
+                .filter(|&cocktail| cocktail.is_subset(&new_partial_ingredients))
                 .cloned()
                 .collect();
             let mut permitted_candidates = FxHashSet::default();
             (&*candidates - &covered_candidates)
                 .iter()
                 .for_each(|cocktail| {
-                    let extended_ingredients = cocktail | &new_partial_ingredients;
+                    let extended_ingredients = cocktail | new_partial_ingredients;
                     if extended_ingredients.len() <= self.max_size {
                         // when we branch, we need to not only remove a cocktail
                         // from the candidate set, but ensure that it's impossible
@@ -165,10 +167,9 @@ impl BranchBound {
                                 .iter()
                                 .any(|forbidden_cocktail| {
                                     forbidden_cocktail.is_subset(&extended_ingredients)
-                                        || forbidden_cocktail == &extended_ingredients
                                 });
                         if !forbidden_cover {
-                            permitted_candidates.insert(cocktail.clone());
+                            permitted_candidates.insert(*cocktail);
                         }
                     }
                 });
@@ -182,8 +183,8 @@ impl BranchBound {
             let mut remaining = candidates.clone();
             remaining.remove(&best);
             remaining.retain(|cocktail| {
-                let test = cocktail | &partial_ingredients;
-                !best.is_subset(&test) || best != test
+                let test = cocktail | partial_ingredients;
+                !best.is_subset(&test)
             });
             let mut new_forbidden = forbidden.as_ref().unwrap().clone();
             new_forbidden.insert(best);
@@ -258,13 +259,12 @@ impl BranchBound {
         _partial: &FxHashSet<IngredientSeti>,
         partial_ingredients: &IngredientSeti,
     ) -> i32 {
-        let candidate_ingredients = candidates
-            .iter()
-            .flatten()
-            .copied()
-            .collect::<IngredientSeti>();
+        let mut candidate_ingredients = BitSet::new();
+        for cocktail in candidates.iter() {
+            candidate_ingredients = candidate_ingredients | cocktail;
+        }
         let mut excess_ingredients =
-            (&candidate_ingredients | partial_ingredients).len() as i32 - self.max_size as i32;
+            (candidate_ingredients | partial_ingredients).len() as i32 - self.max_size as i32;
         let mut ingredient_increases = candidates
             .iter()
             .map(|cocktail| (cocktail - partial_ingredients).len() as i32)
