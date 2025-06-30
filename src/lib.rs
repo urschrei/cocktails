@@ -12,6 +12,30 @@ use std::{cmp::Ordering, collections::BTreeSet};
 mod bitset;
 pub use bitset::BitSet;
 
+/// Efficient checker for forbidden cocktails
+pub struct ForbiddenChecker {
+    forbidden_masks: Vec<BitSet>,
+}
+
+impl ForbiddenChecker {
+    fn new() -> Self {
+        ForbiddenChecker {
+            forbidden_masks: Vec::new(),
+        }
+    }
+
+    fn add(&mut self, cocktail: BitSet) {
+        self.forbidden_masks.push(cocktail);
+    }
+
+    #[inline]
+    fn is_forbidden(&self, ingredients: &BitSet) -> bool {
+        self.forbidden_masks
+            .iter()
+            .any(|forbidden| forbidden.is_subset(ingredients))
+    }
+}
+
 pub type Ingredient = String;
 pub type IngredientSet = BTreeSet<Ingredient>;
 
@@ -23,13 +47,16 @@ pub struct BranchBound {
     pub calls: i32,
     pub max_size: usize,
     pub highest_score: usize,
-    pub highest: FxHashSet<IngredientSeti>,
+    pub highest: Vec<IngredientSeti>,
     pub highest_ingredients: BitSet,
     pub random: ThreadRng,
     pub counter: u32,
     pub min_cover: FxHashMap<BitSet, i32>,
     pub min_amortized_cost: FxHashMap<IngredientSeti, f64>,
     pub initial: bool,
+    // Cache for frequently used operations
+    pub all_cocktails: Vec<IngredientSeti>,
+    pub cocktail_indices: FxHashMap<IngredientSeti, usize>,
 }
 
 /// This will obviously explode on NaN values
@@ -49,13 +76,15 @@ impl BranchBound {
             calls: max_calls,
             max_size,
             highest_score: 0usize,
-            highest: FxHashSet::default(),
+            highest: Vec::new(),
             highest_ingredients: BitSet::new(),
             random: rand::thread_rng(),
             counter: 0,
             min_cover: FxHashMap::default(),
             min_amortized_cost: FxHashMap::default(),
             initial: true,
+            all_cocktails: Vec::new(),
+            cocktail_indices: FxHashMap::default(),
         }
     }
 
@@ -64,12 +93,19 @@ impl BranchBound {
         &mut self,
         candidates: &mut FxHashSet<IngredientSeti>,
         partial: &mut FxHashSet<IngredientSeti>,
-        forbidden: &mut Option<FxHashSet<IngredientSeti>>,
-    ) -> FxHashSet<IngredientSeti> {
+        forbidden: &mut Option<ForbiddenChecker>,
+    ) -> Vec<IngredientSeti> {
         // first run-through, so populate min_cover, amortized cost and cocktail cardinality
         // this SHOULD be a great use of Option, but it's actually such a pain to work with
         if self.initial {
-            *forbidden = Some(FxHashSet::default());
+            *forbidden = Some(ForbiddenChecker::new());
+
+            // Cache all cocktails for index-based access
+            self.all_cocktails = candidates.iter().copied().collect();
+            for (idx, cocktail) in self.all_cocktails.iter().enumerate() {
+                self.cocktail_indices.insert(*cocktail, idx);
+            }
+
             let mut cardinality = FxHashMap::default();
             for cocktail in candidates.iter() {
                 for ingredient in cocktail.iter() {
@@ -118,7 +154,7 @@ impl BranchBound {
         let score = partial.len();
 
         if score > self.highest_score {
-            self.highest.clone_from(partial);
+            self.highest = partial.iter().copied().collect();
             self.highest_score = score;
         }
 
@@ -160,14 +196,10 @@ impl BranchBound {
                         // for the final ingredient list to be a superset of the cocktail.
                         // otherwise, we could undercount the score of the branch.
                         // this is O(N^2), alas.
-                        let forbidden_cover =
-                            forbidden
-                                .as_mut()
-                                .unwrap()
-                                .iter()
-                                .any(|forbidden_cocktail| {
-                                    forbidden_cocktail.is_subset(&extended_ingredients)
-                                });
+                        let forbidden_cover = forbidden
+                            .as_ref()
+                            .unwrap()
+                            .is_forbidden(&extended_ingredients);
                         if !forbidden_cover {
                             permitted_candidates.insert(*cocktail);
                         }
@@ -186,8 +218,11 @@ impl BranchBound {
                 let test = cocktail | partial_ingredients;
                 !best.is_subset(&test)
             });
-            let mut new_forbidden = forbidden.as_ref().unwrap().clone();
-            new_forbidden.insert(best);
+            let mut new_forbidden = ForbiddenChecker::new();
+            for mask in &forbidden.as_ref().unwrap().forbidden_masks {
+                new_forbidden.add(*mask);
+            }
+            new_forbidden.add(best);
 
             self.search(&mut remaining, partial, &mut Some(new_forbidden));
         }
@@ -265,13 +300,24 @@ impl BranchBound {
         }
         let mut excess_ingredients =
             (candidate_ingredients | partial_ingredients).len() as i32 - self.max_size as i32;
-        let mut ingredient_increases = candidates
-            .iter()
-            .map(|cocktail| (cocktail - partial_ingredients).len() as i32)
-            .collect::<Vec<i32>>();
-        ingredient_increases.sort_unstable_by(|a, b| b.cmp(a));
+
+        // Use a small array on the stack for common cases
+        const STACK_SIZE: usize = 128;
+        let mut stack_increases = [0i32; STACK_SIZE];
+        let mut increases_count = 0;
+
+        for cocktail in candidates.iter() {
+            if increases_count < STACK_SIZE {
+                stack_increases[increases_count] = (cocktail - partial_ingredients).len() as i32;
+                increases_count += 1;
+            }
+        }
+
+        // Sort only the used portion
+        stack_increases[..increases_count].sort_unstable_by(|a, b| b.cmp(a));
+
         let mut upper_increment = candidates.len();
-        for ingredient_increase in ingredient_increases {
+        for &ingredient_increase in &stack_increases[..increases_count] {
             if excess_ingredients <= 0 {
                 break;
             }
