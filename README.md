@@ -9,7 +9,7 @@
 In this case, we have **117 ingredients**, and **104 available cocktails**.
 Can we work out an "ideal" list of cocktail ingredients of an **arbitrary length** that will maximise the number of unique cocktails that we can make?
 
-This is – in an abstract sense – a classic combinatorial optimisation problem. One way of solving combinatorics problems is ["branch and bound"](https://en.wikipedia.org/wiki/Branch_and_bound) (BnB). This is a Rust implementation of the solution provided by Forest Gregg (reproduced here, lightly edited).
+This is – in an abstract sense – a classic combinatorial optimisation problem. One way of solving combinatorics problems is ["branch and bound"](https://en.wikipedia.org/wiki/Branch_and_bound) (BnB). This is a Rust implementation of the solution provided by Forest Gregg (reproduced here, lightly edited). A detailed explanation of how the algorithm works is detailed [here](branch_and_bound_explanation.md).
 
 The Rust version has been optimized with a custom BitSet implementation using u128 for fast bitwise operations, delivering significant performance improvements over the original implementation.
 
