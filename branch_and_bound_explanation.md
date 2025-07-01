@@ -4,20 +4,21 @@
 
 This implementation solves the **cocktail ingredient optimization problem**: Given a collection of cocktails (each requiring 2 - 6 ingredients) and a budget of n ingredients, which ingredients should you buy to maximise the number of different cocktails you can make?
 
-The algorithm uses a branch and bound approach with three bounding functions to efficiently prune the search space.
+The algorithm uses a branch and bound approach with three configurable bounding functions to efficiently prune the search space. The modular design allows users to add custom bounds or use only specific bounds as needed.
 
 ## The Three Bounds
 
 ### 1. Total Bound (Most Optimistic)
 
 ```rust
-fn total_bound(
-    &self,
-    candidates: &FxHashSet<IngredientSeti>,
-    _partial: &FxHashSet<IngredientSeti>,
-    _partial_ingredients: &IngredientSeti,
-) -> i32 {
-    candidates.len() as i32
+impl BoundFunction for TotalBound {
+    fn compute(&self, context: &BoundContext) -> i32 {
+        context.candidates.len() as i32
+    }
+    
+    fn name(&self) -> &'static str {
+        "TotalBound"
+    }
 }
 ```
 
@@ -30,25 +31,26 @@ fn total_bound(
 ### 2. Singleton Bound (Unique Ingredient Constraint)
 
 ```rust
-fn singleton_bound(
-    &self,
-    candidates: &FxHashSet<IngredientSeti>,
-    _partial: &FxHashSet<IngredientSeti>,
-    partial_ingredients: &IngredientSeti,
-) -> i32 {
-    let n_unique_cocktails = candidates
-        .iter()
-        .filter(|cocktail| self.min_cover.get(cocktail).unwrap() == &1)
-        .count();
-    let ingredient_budget = self.max_size - partial_ingredients.len();
-    candidates.len() as i32 - n_unique_cocktails as i32
-        + (n_unique_cocktails.min(ingredient_budget) as i32)
+impl BoundFunction for SingletonBound {
+    fn compute(&self, context: &BoundContext) -> i32 {
+        let n_unique_cocktails = context
+            .candidates
+            .iter()
+            .filter(|cocktail| context.min_cover.get(cocktail).unwrap() == &1)
+            .count();
+        let ingredient_budget = context.max_size - context.partial_ingredients.len();
+        context.candidates.len() as i32 - n_unique_cocktails as i32
+            + (n_unique_cocktails.min(ingredient_budget) as i32)
+    }
+    
+    fn name(&self) -> &'static str {
+        "SingletonBound"
+    }
 }
 ```
 
 **What it does**: Accounts for cocktails that have unique ingredients (ingredients used by only that cocktail).
 
-**Mathematical insight**: 
 - Each cocktail with a unique ingredient costs at least 1 ingredient from our budget
 - We can't make more unique-ingredient cocktails than our remaining budget
 - Formula: `non_unique_cocktails + min(unique_cocktails, remaining_budget)`
@@ -58,31 +60,34 @@ fn singleton_bound(
 ### 3. Concentration Bound (Most Sophisticated)
 
 ```rust
-fn concentration_bound(
-    &self,
-    candidates: &FxHashSet<IngredientSeti>,
-    _partial: &FxHashSet<IngredientSeti>,
-    partial_ingredients: &IngredientSeti,
-) -> i32 {
-    // Calculate total ingredients needed
-    let mut candidate_ingredients = BitSet::new();
-    for cocktail in candidates.iter() {
-        candidate_ingredients = candidate_ingredients | cocktail;
+impl BoundFunction for ConcentrationBound {
+    fn compute(&self, context: &BoundContext) -> i32 {
+        // Calculate total ingredients needed
+        let mut candidate_ingredients = BitSet::new();
+        for cocktail in context.candidates.iter() {
+            candidate_ingredients = candidate_ingredients | cocktail;
+        }
+        
+        // Find excess over budget
+        let mut excess_ingredients = (candidate_ingredients | context.partial_ingredients).len()
+            as i32 - context.max_size as i32;
+        
+        // Sort cocktails by how many NEW ingredients they add
+        // Remove greediest cocktails until under budget
+        // Return count of cocktails that could fit
+        
+        // ... stack-based sorting implementation ...
+        upper_increment as i32
     }
     
-    // Find excess over budget
-    let mut excess_ingredients = 
-        (candidate_ingredients | partial_ingredients).len() as i32 - self.max_size as i32;
-    
-    // Sort cocktails by how many NEW ingredients they add
-    // Remove greediest cocktails until under budget
-    // Return count of cocktails that could fit
+    fn name(&self) -> &'static str {
+        "ConcentrationBound"
+    }
 }
 ```
 
 **What it does**: Considers the best-case scenario where excess ingredients are concentrated in a few cocktails.
 
-**Mathematical insight**: 
 - If we need more ingredients than our budget allows, we must drop some cocktails
 - Best case: drop the "greediest" cocktails (those adding the most new ingredients)
 - This gives us the maximum possible cocktails we could make
@@ -99,25 +104,29 @@ fn keep_exploring(
     partial_ingredients: &IngredientSeti,
 ) -> bool {
     let threshold = (self.highest_score - partial.len()) as i32;
-    let bound_functions = [
-        Self::total_bound,
-        Self::singleton_bound,
-        Self::concentration_bound,
-    ];
-    for func in bound_functions {
-        let bound = func(self, candidates, partial, partial_ingredients);
-        if bound <= threshold {
-            return false;  // Prune this branch
-        }
-    }
-    true  // Continue exploring
+    
+    let context = BoundContext {
+        candidates,
+        partial,
+        partial_ingredients,
+        max_size: self.max_size,
+        min_cover: &self.min_cover,
+        min_amortized_cost: &self.min_amortized_cost,
+    };
+    
+    // Use iterator methods for cleaner, more functional approach
+    self.bound_functions
+        .iter()
+        .all(|bound| bound.compute(&context) > threshold)
 }
 ```
 
-The bounds are checked in order of computational complexity:
-1. **Total bound**: O(1) operation
-2. **Singleton bound**: O(n) scan with cached data
-3. **Concentration bound**: O(n log n) due to sorting
+The bounds are checked using iterator methods:
+
+- Bounds implement the `BoundFunction` trait
+- We can add custom bounds or use only specific ones
+- Uses `.all()` to check if any bound fails
+- Stops as soon as any bound indicates pruning
 
 If ANY bound indicates we can't beat the current best, we prune immediately.
 
@@ -169,6 +178,56 @@ The branch and bound approach with these three bounds is effective because:
 4. **Exponential pruning**: Each pruned branch eliminates an exponential number of recursive calls
 
 Without these bounds, the algorithm would need to explore all 2^n possible cocktail combinations. With effective bounding, large portions of the search space are eliminated early, making the problem tractable even for large cocktail databases.
+
+## Modular Bound Architecture
+
+The implementation uses a trait-based approach for flexibility:
+
+### BoundFunction Trait
+```rust
+trait BoundFunction: Send + Sync {
+    fn compute(&self, context: &BoundContext) -> i32;
+    fn name(&self) -> &'static str;
+}
+```
+
+### Configurable Bounds
+Users can customise which bounds to use:
+
+```rust
+// Use default bounds
+let solver = BranchBound::new(1000000, 10);
+
+// Use specific bounds only
+let solver = BranchBoundBuilder::new(1000000, 10)
+    .with_bound(Box::new(TotalBound))
+    .with_bound(Box::new(SingletonBound))
+    .build();
+
+// Add custom bounds
+let solver = BranchBoundBuilder::new(1000000, 10)
+    .with_default_bounds()
+    .with_bound(Box::new(MyCustomBound))
+    .build();
+```
+
+### Creating Custom Bounds
+Users can implement their own bounding functions:
+
+```rust
+struct MyCustomBound;
+
+impl BoundFunction for MyCustomBound {
+    fn compute(&self, context: &BoundContext) -> i32 {
+        // Custom logic here
+        context.candidates.len() as i32 / 2
+    }
+    
+    fn name(&self) -> &'static str {
+        "MyCustomBound"
+    }
+}
+```
 
 ## Key Implementation Details
 
@@ -235,4 +294,4 @@ self.min_amortized_cost.insert(
 - **How it works**: When we decide NOT to include a cocktail in a branch, we must ensure no superset of its ingredients appears in our final solution
 - **Implementation**: Maintains masks of forbidden ingredient combinations (lines 16-37)
 
-This combination of sophisticated bounds and efficient data structures enables the algorithm to find optimal solutions for realistic problem sizes (100+ cocktails, 100+ ingredients) in reasonable time.
+This combination of modular bound functions, sophisticated algorithms, and efficient data structures enables the algorithm to find optimal solutions for realistic problem sizes (100+ cocktails, 100+ ingredients) in reasonable time. The trait-based architecture makes it easy to experiment with different bounding strategies and extend the algorithm for specific use cases.
