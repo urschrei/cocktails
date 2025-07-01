@@ -22,7 +22,6 @@ struct Args {
     #[arg(short, long, default_value = "table")]
     format: String,
 
-
     /// Generate markdown documentation (hidden)
     #[arg(long, hide = true)]
     markdown_help: bool,
@@ -149,19 +148,19 @@ fn print_table_output(
     println!("├─────────────────────────────────────────────────────────┤");
 
     let line1 = format!("Target ingredients: {}", args.ingredients);
-    println!("│ {:<width$} │", line1, width = TABLE_WIDTH);
+    println!("│ {line1:<TABLE_WIDTH$} │");
 
     let line2 = format!("Search iterations: {}", bb.counter);
-    println!("│ {:<width$} │", line2, width = TABLE_WIDTH);
+    println!("│ {line2:<TABLE_WIDTH$} │");
 
     let line3 = format!("Execution time: {}ms", duration.as_millis());
-    println!("│ {:<width$} │", line3, width = TABLE_WIDTH);
+    println!("│ {line3:<TABLE_WIDTH$} │");
 
     let line4 = format!("Optimal cocktails: {}", cocktails.len());
-    println!("│ {:<width$} │", line4, width = TABLE_WIDTH);
+    println!("│ {line4:<TABLE_WIDTH$} │");
 
     let line5 = format!("Ingredients used: {}", ingredients.len());
-    println!("│ {:<width$} │", line5, width = TABLE_WIDTH);
+    println!("│ {line5:<TABLE_WIDTH$} │");
 
     println!("└─────────────────────────────────────────────────────────┘");
 
@@ -191,12 +190,12 @@ fn print_simple_output(
 
     println!("\nIngredients:");
     for ingredient in ingredients {
-        println!("  {}", ingredient);
+        println!("  {ingredient}");
     }
 
     println!("\nCocktails:");
     for cocktail in cocktails {
-        println!("  {}", cocktail);
+        println!("  {cocktail}");
     }
 }
 
@@ -216,13 +215,13 @@ fn print_json_output(
     println!("  \"ingredients\": [");
     for (i, ingredient) in ingredients.iter().enumerate() {
         let comma = if i < ingredients.len() - 1 { "," } else { "" };
-        println!("    \"{}\"{}", ingredient, comma);
+        println!("    \"{ingredient}\"{comma}");
     }
     println!("  ],");
     println!("  \"cocktails\": [");
     for (i, cocktail) in cocktails.iter().enumerate() {
         let comma = if i < cocktails.len() - 1 { "," } else { "" };
-        println!("    \"{}\"{}", cocktail, comma);
+        println!("    \"{cocktail}\"{comma}");
     }
     println!("  ]");
     println!("}}");
