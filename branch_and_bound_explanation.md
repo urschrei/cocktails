@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation solves the **cocktail ingredient optimization problem**: Given a collection of cocktails (each requiring 2-6 ingredients) and a budget of n ingredients, which ingredients should you buy to maximise the number of different cocktails you can make?
+This implementation solves the **cocktail ingredient optimization problem**: Given a collection of cocktails (each requiring 2 - 6 ingredients) and a budget of n ingredients, which ingredients should you buy to maximise the number of different cocktails you can make?
 
 The algorithm uses a branch and bound approach with three bounding functions to efficiently prune the search space.
 
@@ -23,7 +23,7 @@ fn total_bound(
 
 **What it does**: Returns the total number of candidate cocktails remaining.
 
-**Logic**: This is the most optimistic bound - it assumes we could make ALL remaining cocktails.
+**Logic**: This is the most optimistic bound; it assumes we could make ALL remaining cocktails.
 
 **When it prunes**: When even making all remaining cocktails wouldn't beat our current best solution.
 
@@ -115,9 +115,9 @@ fn keep_exploring(
 ```
 
 The bounds are checked in order of computational complexity:
-1. **Total bound** - O(1) operation
-2. **Singleton bound** - O(n) scan with cached data
-3. **Concentration bound** - O(n log n) due to sorting
+1. **Total bound**: O(1) operation
+2. **Singleton bound**: O(n) scan with cached data
+3. **Concentration bound**: O(n log n) due to sorting
 
 If ANY bound indicates we can't beat the current best, we prune immediately.
 
@@ -172,9 +172,67 @@ Without these bounds, the algorithm would need to explore all 2^n possible cockt
 
 ## Key Implementation Details
 
-- **Min cover**: Precomputed minimum cocktail frequency for each ingredient (used in singleton bound)
-- **Min amortised cost**: Precomputed cost metric for choosing which cocktail to branch on
-- **BitSet operations**: Efficient set operations for ingredient combinations
-- **Forbidden checker**: Ensures we don't count cocktails that would be inadvertently included
+### Min Cover (Minimum Cocktail Coverage)
 
-This combination of bounds and efficient data structures enables the algorithm to find optimal solutions for realistic problem sizes (100+ cocktails, 100+ ingredients) in reasonable time.
+**Purpose**: For each cocktail, identifies the rarest ingredient it contains.
+
+```rust
+self.min_cover.insert(
+    *cocktail,
+    cocktail
+        .iter()
+        .map(|ingredient| *cardinality.get(&(ingredient as i32)).unwrap())
+        .min()
+        .unwrap(),
+);
+```
+
+**Example**: If a cocktail has rum (used in 10 cocktails), lime (used in 8), and mint (used in only 1), then `min_cover = 1`.
+
+**Role in Algorithm**: 
+- Used in `singleton_bound` to identify cocktails with unique ingredients
+- A cocktail with `min_cover = 1` has at least one ingredient used nowhere else
+- These cocktails are "expensive" because they force us to buy an ingredient for just one cocktail
+
+### Min Amortised Cost (Cocktail Selection Heuristic)
+
+**Purpose**: Estimates the "ingredient cost per cocktail" if we had unlimited budget.
+
+```rust
+self.min_amortized_cost.insert(
+    *cocktail,
+    cocktail
+        .iter()
+        .map(|ingredient| {
+            1f64 / f64::from(*cardinality.get(&(ingredient as i32)).unwrap())
+        })
+        .sum::<f64>(),
+);
+```
+
+**Example**: For a cocktail with:
+- Rum (used in 10 cocktails): contributes 1/10 = 0.1
+- Lime (used in 8 cocktails): contributes 1/8 = 0.125
+- Mint (unique): contributes 1/1 = 1.0
+- Total amortised cost: 1.225
+
+**Role in Algorithm**:
+- Used in branching decision to select the next cocktail to consider
+- Lower cost cocktails share more ingredients with others, making them efficient choices
+- This greedy heuristic helps find good solutions faster
+
+**Why "Amortised"**: The cost is spread across all cocktails that could use each ingredient. Popular ingredients (like rum or lime) have their cost divided among many cocktails, while unique ingredients bear their full cost.
+
+### BitSet Operations
+
+- **Purpose**: Efficient set operations for ingredient combinations
+- **Benefits**: Fast union, intersection, and subset checking using bit manipulation
+- **Example**: Checking if we have all ingredients for a cocktail is a single bitwise operation
+
+### Forbidden Checker
+
+- **Purpose**: Ensures we don't count cocktails that would be inadvertently included
+- **How it works**: When we decide NOT to include a cocktail in a branch, we must ensure no superset of its ingredients appears in our final solution
+- **Implementation**: Maintains masks of forbidden ingredient combinations (lines 16-37)
+
+This combination of sophisticated bounds and efficient data structures enables the algorithm to find optimal solutions for realistic problem sizes (100+ cocktails, 100+ ingredients) in reasonable time.
