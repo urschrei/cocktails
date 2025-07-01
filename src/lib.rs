@@ -12,6 +12,9 @@ use std::{cmp::Ordering, collections::BTreeSet};
 mod bitset;
 pub use bitset::BitSet;
 
+pub mod bounds;
+use bounds::{BoundContext, BoundFunction, ConcentrationBound, SingletonBound, TotalBound};
+
 /// Efficient checker for forbidden cocktails
 pub struct ForbiddenChecker {
     forbidden_masks: Vec<BitSet>,
@@ -42,7 +45,6 @@ pub type IngredientSet = BTreeSet<Ingredient>;
 pub type Ingredienti = i32;
 pub type IngredientSeti = BitSet;
 
-#[derive(Debug)]
 pub struct BranchBound {
     pub calls: i32,
     pub max_size: usize,
@@ -57,6 +59,8 @@ pub struct BranchBound {
     // Cache for frequently used operations
     pub all_cocktails: Vec<IngredientSeti>,
     pub cocktail_indices: FxHashMap<IngredientSeti, usize>,
+    // Configurable bound functions
+    pub bound_functions: Vec<Box<dyn BoundFunction>>,
 }
 
 /// This will obviously explode on NaN values
@@ -69,12 +73,47 @@ fn cmp_f64(a: f64, b: f64) -> Ordering {
     Ordering::Equal
 }
 
-impl BranchBound {
-    #[must_use]
-    pub fn new(max_calls: i32, max_size: usize) -> BranchBound {
-        BranchBound {
-            calls: max_calls,
+pub struct BranchBoundBuilder {
+    max_calls: i32,
+    max_size: usize,
+    bound_functions: Vec<Box<dyn BoundFunction>>,
+}
+
+impl BranchBoundBuilder {
+    pub fn new(max_calls: i32, max_size: usize) -> Self {
+        BranchBoundBuilder {
+            max_calls,
             max_size,
+            bound_functions: Vec::new(),
+        }
+    }
+
+    pub fn with_bound(mut self, bound: Box<dyn BoundFunction>) -> Self {
+        self.bound_functions.push(bound);
+        self
+    }
+
+    pub fn with_default_bounds(self) -> Self {
+        self.with_bound(Box::new(TotalBound))
+            .with_bound(Box::new(SingletonBound))
+            .with_bound(Box::new(ConcentrationBound))
+    }
+
+    pub fn build(self) -> BranchBound {
+        let bounds = if self.bound_functions.is_empty() {
+            // If no bounds specified, use defaults
+            vec![
+                Box::new(TotalBound) as Box<dyn BoundFunction>,
+                Box::new(SingletonBound) as Box<dyn BoundFunction>,
+                Box::new(ConcentrationBound) as Box<dyn BoundFunction>,
+            ]
+        } else {
+            self.bound_functions
+        };
+
+        BranchBound {
+            calls: self.max_calls,
+            max_size: self.max_size,
             highest_score: 0usize,
             highest: Vec::new(),
             highest_ingredients: BitSet::new(),
@@ -85,9 +124,16 @@ impl BranchBound {
             initial: true,
             all_cocktails: Vec::new(),
             cocktail_indices: FxHashMap::default(),
+            bound_functions: bounds,
         }
     }
+}
 
+impl BranchBound {
+    #[must_use]
+    pub fn new(max_calls: i32, max_size: usize) -> BranchBound {
+        BranchBoundBuilder::new(max_calls, max_size).build()
+    }
 
     #[inline(always)]
     pub fn search(
@@ -239,92 +285,19 @@ impl BranchBound {
         partial_ingredients: &IngredientSeti,
     ) -> bool {
         let threshold = (self.highest_score - partial.len()) as i32;
-        let bound_functions = [
-            Self::total_bound,
-            Self::singleton_bound,
-            Self::concentration_bound,
-        ];
-        for func in bound_functions {
-            let bound = func(self, candidates, partial, partial_ingredients);
-            if bound <= threshold {
-                return false;
-            };
-        }
-        true
-    }
 
-    fn total_bound(
-        &self,
-        candidates: &FxHashSet<IngredientSeti>,
-        _partial: &FxHashSet<IngredientSeti>,
-        _partial_ingredients: &IngredientSeti,
-    ) -> i32 {
-        candidates.len() as i32
-    }
+        let context = BoundContext {
+            candidates,
+            partial,
+            partial_ingredients,
+            max_size: self.max_size,
+            min_cover: &self.min_cover,
+            min_amortized_cost: &self.min_amortized_cost,
+        };
 
-    /// There are many cocktails that have an unique ingredient.
-    ///
-    /// Each cocktail with a unique ingredient will cost at least
-    /// one ingredient from our ingredient budget, and the total
-    /// possible increase due to these unique cocktails is bounded
-    /// by the ingredient budget
-    fn singleton_bound(
-        &self,
-        candidates: &FxHashSet<IngredientSeti>,
-        _partial: &FxHashSet<IngredientSeti>,
-        partial_ingredients: &IngredientSeti,
-    ) -> i32 {
-        let n_unique_cocktails = candidates
+        // Use iterator methods for cleaner, more functional approach
+        self.bound_functions
             .iter()
-            .filter(|cocktail| self.min_cover.get(cocktail).unwrap() == &1)
-            .count();
-        let ingredient_budget = self.max_size - partial_ingredients.len();
-        candidates.len() as i32 - n_unique_cocktails as i32
-            + (n_unique_cocktails.min(ingredient_budget) as i32)
-    }
-    /// best case is that excess ingredients are concentrated in
-    /// some cocktails. if we are in this best case, then if we
-    /// remove the cocktails that add the most new ingredients
-    /// we'll be back under the ingredient budget
-    /// note that we are just updating the bound. it could actually
-    /// be that we want to add one of these cocktails that add
-    /// a lot of ingredients
-    fn concentration_bound(
-        &self,
-        candidates: &FxHashSet<IngredientSeti>,
-        _partial: &FxHashSet<IngredientSeti>,
-        partial_ingredients: &IngredientSeti,
-    ) -> i32 {
-        let mut candidate_ingredients = BitSet::new();
-        for cocktail in candidates.iter() {
-            candidate_ingredients = candidate_ingredients | cocktail;
-        }
-        let mut excess_ingredients =
-            (candidate_ingredients | partial_ingredients).len() as i32 - self.max_size as i32;
-
-        // Use a small array on the stack for common cases
-        const STACK_SIZE: usize = 128;
-        let mut stack_increases = [0i32; STACK_SIZE];
-        let mut increases_count = 0;
-
-        for cocktail in candidates.iter() {
-            if increases_count < STACK_SIZE {
-                stack_increases[increases_count] = (cocktail - partial_ingredients).len() as i32;
-                increases_count += 1;
-            }
-        }
-
-        // Sort only the used portion
-        stack_increases[..increases_count].sort_unstable_by(|a, b| b.cmp(a));
-
-        let mut upper_increment = candidates.len();
-        for &ingredient_increase in &stack_increases[..increases_count] {
-            if excess_ingredients <= 0 {
-                break;
-            }
-            upper_increment -= 1;
-            excess_ingredients -= ingredient_increase;
-        }
-        upper_increment as i32
+            .all(|bound| bound.compute(&context) > threshold)
     }
 }
