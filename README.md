@@ -11,7 +11,7 @@ Can we work out an "ideal" list of cocktail ingredients of an **arbitrary length
 
 This is – in an abstract sense – a classic combinatorial optimisation problem. One way of solving combinatorics problems is ["branch and bound"](https://en.wikipedia.org/wiki/Branch_and_bound) (BnB). This is a Rust implementation of the solution provided by Forest Gregg (reproduced here, lightly edited). A detailed explanation of how the algorithm works is detailed [here](branch_and_bound_explanation.md).
 
-The Rust version has been optimized with a custom BitSet implementation using u128 for fast bitwise operations, delivering significant performance improvements over the original implementation.
+The Rust version uses a BitSet implementation using SmallVec-backed storage for fast bitwise operations.
 
 ## Running the code
 
@@ -44,9 +44,9 @@ Options:
 
 Find optimal ingredients for different counts:
 ```bash
-./target/release/branchbound --ingredients 8   # Fast: ~6 ms
-./target/release/branchbound --ingredients 12  # Medium: ~150 ms
-./target/release/branchbound --ingredients 16  # Slower: ~3 s
+./target/release/branchbound --ingredients 8   # Fast: ~15 ms
+./target/release/branchbound --ingredients 12  # Medium: ~307 ms
+./target/release/branchbound --ingredients 16  # Slower: ~6 s
 ```
 
 Different output formats:
@@ -63,25 +63,26 @@ The optimized Rust implementation scaling characteristics:
 
 | Ingredients | Time | Iterations | Cocktails Found |
 |-------------|------|------------|----------------|
-| 8           | ~6ms | ~3,500     | 6 cocktails    |
-| 12          | ~150ms | ~109,000   | 10 cocktails   |
-| 16          | ~3s  | ~2,000,000 | 14 cocktails   |
+| 8           | ~15ms | ~3,500     | 6 cocktails    |
+| 12          | ~307ms | ~109,000   | 10 cocktails   |
+| 16          | ~6s  | ~2,000,000 | 14 cocktails   |
 
 Compared to the original Python implementation (12 ingredients):
-- **Rust (optimized)**: 147ms 
+- **Rust (optimized)**: 307ms 
 - **Python**: 2.37 seconds
-- **Speedup**: **16.1x faster**
+- **Speedup**: **7.7x faster**
 
 The optimization involved:
-1. Replacing `BTreeSet` operations with a custom `BitSet` using `u128` storage
+1. Replacing `BTreeSet` operations with a custom `BitSet` using `SmallVec<[u64; 3]>` storage
 2. Using fast bitwise operations for set union, intersection, and difference
-3. Optimizing data structures to reduce allocations in hot paths
+3. Optimizing data structures with SmallVec to reduce heap allocations in hot paths
 4. Building lookup tables for ingredient/cocktail indexing
+5. Implementing in-place BitSet operations to reduce cloning
 
 ## Implementation Notes
 
-### Limitations
-The current implementation has a **maximum of 128 ingredients** due to the use of `u128` for the custom BitSet. This is a practical trade-off that works well for this specific problem (117 ingredients).
+### Scalability
+The current implementation supports **unlimited ingredients** by using dynamic chunk allocation with SmallVec. The first 192 bits (3 × 64) are stored inline without heap allocation.
 
 ### For Larger Domains
 For problems with more than 128 elements, consider using:

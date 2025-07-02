@@ -89,7 +89,7 @@ fn main() {
                 .map(|ingredient| *ingredient_lookup.get(ingredient).unwrap()),
         );
         // populate mapping for optimisation
-        numeric_set.insert(ingredientset);
+        numeric_set.insert(ingredientset.clone());
         cocktail_lookup_reverse.insert(ingredientset, name);
     });
     println!(

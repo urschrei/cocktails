@@ -7,6 +7,7 @@
 //! Original here: https://gist.github.com/tmcw/c6bdcfe505057ed6a0f356cfd02d4d52
 use rand::rngs::ThreadRng;
 use rustc_hash::{FxHashMap, FxHashSet};
+use smallvec::SmallVec;
 use std::{cmp::Ordering, collections::BTreeSet};
 
 mod bitset;
@@ -17,18 +18,21 @@ use bounds::{BoundContext, BoundFunction, ConcentrationBound, SingletonBound, To
 
 /// Efficient checker for forbidden cocktails
 pub struct ForbiddenChecker {
-    forbidden_masks: Vec<BitSet>,
+    forbidden_masks: SmallVec<[BitSet; 8]>,
 }
 
 impl ForbiddenChecker {
     fn new() -> Self {
         ForbiddenChecker {
-            forbidden_masks: Vec::new(),
+            forbidden_masks: SmallVec::new(),
         }
     }
 
-    fn add(&mut self, cocktail: BitSet) {
-        self.forbidden_masks.push(cocktail);
+    fn with_base(base: &ForbiddenChecker, additional: BitSet) -> Self {
+        let mut forbidden_masks = SmallVec::with_capacity(base.forbidden_masks.len() + 1);
+        forbidden_masks.extend(base.forbidden_masks.iter().cloned());
+        forbidden_masks.push(additional);
+        ForbiddenChecker { forbidden_masks }
     }
 
     #[inline]
@@ -148,9 +152,9 @@ impl BranchBound {
             *forbidden = Some(ForbiddenChecker::new());
 
             // Cache all cocktails for index-based access
-            self.all_cocktails = candidates.iter().copied().collect();
+            self.all_cocktails = candidates.iter().cloned().collect();
             for (idx, cocktail) in self.all_cocktails.iter().enumerate() {
-                self.cocktail_indices.insert(*cocktail, idx);
+                self.cocktail_indices.insert(cocktail.clone(), idx);
             }
 
             let mut cardinality = FxHashMap::default();
@@ -172,7 +176,7 @@ impl BranchBound {
             // we will ever pay in ingredient cost for a cocktail.
             for cocktail in candidates.iter() {
                 self.min_amortized_cost.insert(
-                    *cocktail,
+                    cocktail.clone(),
                     cocktail
                         .iter()
                         .map(|ingredient| {
@@ -181,7 +185,7 @@ impl BranchBound {
                         .sum::<f64>(),
                 );
                 self.min_cover.insert(
-                    *cocktail,
+                    cocktail.clone(),
                     cocktail
                         .iter()
                         .map(|ingredient| *cardinality.get(&(ingredient as i32)).unwrap())
@@ -201,7 +205,7 @@ impl BranchBound {
         let score = partial.len();
 
         if score > self.highest_score {
-            self.highest = partial.iter().copied().collect();
+            self.highest = partial.iter().cloned().collect();
             self.highest_score = score;
         }
 
@@ -209,7 +213,7 @@ impl BranchBound {
         // this will be empty on the first iteration
         let mut partial_ingredients = BitSet::new();
         for cocktail in partial.iter() {
-            partial_ingredients = partial_ingredients | cocktail;
+            partial_ingredients.union_assign(cocktail);
         }
         let keep_exploring = self.keep_exploring(candidates, partial, &partial_ingredients);
 
@@ -225,51 +229,45 @@ impl BranchBound {
                     )
                 })
                 .unwrap()
-                .to_owned();
-            let new_partial_ingredients = partial_ingredients | best;
-            let covered_candidates = candidates
-                .iter()
-                .filter(|&cocktail| cocktail.is_subset(&new_partial_ingredients))
-                .cloned()
-                .collect();
-            let mut permitted_candidates = FxHashSet::default();
-            (&*candidates - &covered_candidates)
-                .iter()
-                .for_each(|cocktail| {
-                    let extended_ingredients = cocktail | new_partial_ingredients;
+                .clone();
+            let new_partial_ingredients = &partial_ingredients | &best;
+            let mut covered_candidates =
+                FxHashSet::with_capacity_and_hasher(candidates.len() / 2, Default::default());
+            let mut permitted_candidates =
+                FxHashSet::with_capacity_and_hasher(candidates.len(), Default::default());
+
+            for cocktail in candidates.iter() {
+                if cocktail.is_subset(&new_partial_ingredients) {
+                    covered_candidates.insert(cocktail.clone());
+                } else {
+                    let extended_ingredients = cocktail | &new_partial_ingredients;
                     if extended_ingredients.len() <= self.max_size {
-                        // when we branch, we need to not only remove a cocktail
-                        // from the candidate set, but ensure that it's impossible
-                        // for the final ingredient list to be a superset of the cocktail.
-                        // otherwise, we could undercount the score of the branch.
-                        // this is O(N^2), alas.
                         let forbidden_cover = forbidden
                             .as_ref()
                             .unwrap()
                             .is_forbidden(&extended_ingredients);
                         if !forbidden_cover {
-                            permitted_candidates.insert(*cocktail);
+                            permitted_candidates.insert(cocktail.clone());
                         }
                     }
-                });
-
-            self.search(
-                &mut permitted_candidates,
-                &mut (&*partial | &covered_candidates),
-                forbidden,
-            );
-
-            let mut remaining = candidates.clone();
-            remaining.remove(&best);
-            remaining.retain(|cocktail| {
-                let test = cocktail | partial_ingredients;
-                !best.is_subset(&test)
-            });
-            let mut new_forbidden = ForbiddenChecker::new();
-            for mask in &forbidden.as_ref().unwrap().forbidden_masks {
-                new_forbidden.add(*mask);
+                }
             }
-            new_forbidden.add(best);
+
+            let mut new_partial = partial.clone();
+            new_partial.extend(covered_candidates.iter().cloned());
+
+            self.search(&mut permitted_candidates, &mut new_partial, forbidden);
+
+            let mut remaining = FxHashSet::default();
+            for cocktail in candidates.iter() {
+                if cocktail != &best {
+                    let test = cocktail | &partial_ingredients;
+                    if !best.is_subset(&test) {
+                        remaining.insert(cocktail.clone());
+                    }
+                }
+            }
+            let new_forbidden = ForbiddenChecker::with_base(forbidden.as_ref().unwrap(), best);
 
             self.search(&mut remaining, partial, &mut Some(new_forbidden));
         }
